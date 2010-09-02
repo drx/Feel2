@@ -121,7 +121,7 @@ class RistarROM(ROM):
 
     def load_level(self, level_id):
         pointers = self.pointers[self.rom_version]
-        self.level = {}
+        level = {}
         
         if level_id >= 0x24:
             tileset_id = 0x15
@@ -136,36 +136,36 @@ class RistarROM(ROM):
         tile_data = self.data[tiles_address:]
         if tileset_id in (0, 1):
             flora_hack = star.decompress(self.data[pointers['flora_hack']:])
-            self.level['tiles'] = flora_hack + star.decompress(tile_data)
+            level['tiles'] = flora_hack + star.decompress(tile_data)
             if tileset_id == 0:
-                self.level['tiles'] = '\0'*0x40+self.level['tiles'] 
+                level['tiles'] = '\0'*0x40+level['tiles'] 
         elif tileset_id == 0x15:
-            self.level['tiles'] = star.decompress(tile_data)
+            level['tiles'] = star.decompress(tile_data)
         else:
-            self.level['tiles'] = nemesis.decompress(tile_data)
+            level['tiles'] = nemesis.decompress(tile_data)
 
         mappings_256_address = self.data.dword(pointers['mappings_256']+level_id*4)
-        self.level['mappings_256'] = Data(star.decompress(self.data[mappings_256_address:]))
+        level['mappings_256'] = Data(star.decompress(self.data[mappings_256_address:]))
 
         mappings_16_address = self.data.dword(pointers['mappings_16']+tileset_id*8)
-        self.level['mappings_16'] = Data(star.decompress(self.data[mappings_16_address:]))
+        level['mappings_16'] = Data(star.decompress(self.data[mappings_16_address:]))
 
         objects_address = pointers['objects'] + self.data.word(pointers['objects']+objectset_id*2) + 2
-        self.level['objects'] = star.decompress(self.data[objects_address:])
+        level['objects'] = star.decompress(self.data[objects_address:])
 
         collisions_address = pointers['level_collisions'] + self.data.word(pointers['level_collisions']+objectset_id*2)
-        self.level['collisions'] = star.decompress(self.data[collisions_address:])
+        level['collisions'] = star.decompress(self.data[collisions_address:])
 
-        self.level['collision_array'] = self.data[pointers['collision_array']:pointers['collision_array']+0x3c0]
+        level['collision_array'] = self.data[pointers['collision_array']:pointers['collision_array']+0x3c0]
 
         if level_id < 0x15:
             palette_address = pointers['palettes'] + self.data.word(pointers['palettes']+level_id*2)
-            self.level['palette'] = self.data[palette_address:palette_address+0x80]
+            level['palette'] = self.data[palette_address:palette_address+0x80]
         else:
             palette_address = pointers['treasure_palettes_level'] + 0x20*(level_id-0x24)
-            self.level['palette'] = self.data[palette_address:palette_address+0x40] + '\0'*0x20 + self.data[pointers['treasure_palette']:pointers['treasure_palette']+0x20]
+            level['palette'] = self.data[palette_address:palette_address+0x40] + '\0'*0x20 + self.data[pointers['treasure_palette']:pointers['treasure_palette']+0x20]
 
-        self.level['palette'] = RistarROM.palette_md_to_rgb(self.level['palette'])
+        level['palette'] = RistarROM.palette_md_to_rgb(level['palette'])
 
         address = self.data.dword(pointers['foreground']+level_id*4)
         x, y = self.data[address]+1, self.data[address+1]+1
@@ -179,28 +179,28 @@ class RistarROM(ROM):
                 address += 1
             layout[cur_y] = layout_line
 
-        self.level['foreground'] = layout
+        level['foreground'] = layout
 
 
         '''Build 16x16 blocks'''
         blocks_16 = []
         from PyQt4 import QtGui, QtCore
-        for i in xrange(len(self.level['mappings_16'])/8):
+        for i in xrange(len(level['mappings_16'])/8):
             block = QtGui.QImage(16, 16, QtGui.QImage.Format_ARGB32)
             for x in range(2):
                 for y in range(2):
-                    flags, tile_id = divmod(self.level['mappings_16'].word(i*8+y*4+x*2), 0x800)
+                    flags, tile_id = divmod(level['mappings_16'].word(i*8+y*4+x*2), 0x800)
                     flip_x, flip_y = flags & 0x800, flags & 0x1000
                     palette_line = (flags & 0x6000) >> 13
 
-                    tile_data = self.level['tiles'][tile_id*0x20:(tile_id+1)*0x20]
+                    tile_data = level['tiles'][tile_id*0x20:(tile_id+1)*0x20]
                     tile_i = 0
                     for tile_byte in tile_data:
                         tile_y, tile_x = divmod(tile_i, 8)
                         tile_byte = ord(tile_byte)
                         for k in (0, 1):
                             tyle_byte, palette_cell = divmod(tile_byte, 0x10)
-                            color = self.level['palette'][palette_line*0x10+palette_cell]
+                            color = level['palette'][palette_line*0x10+palette_cell]
                             set_x, set_y = tile_x+k, tile_y
                             if flip_x:
                                 set_x = 8-set_x
@@ -210,37 +210,49 @@ class RistarROM(ROM):
                         tile_i += 2
 
             blocks_16.append(block)
-        self.level['blocks_16'] = blocks_16
+        level['blocks_16'] = blocks_16
 
         '''Build 256x256 blocks'''
         blocks_256 = []
-        for i in xrange(len(self.level['mappings_256'])/0x200):
+        for i in xrange(len(level['mappings_256'])/0x200):
             block = QtGui.QImage(256, 256, QtGui.QImage.Format_ARGB32)
             painter = QtGui.QPainter(block)
             for x in range(16):
                 for y in range(16):
-                    flags, block_16_id = divmod(self.level['mappings_256'].word(i*0x200+y*0x20+x*2), 0x200)
+                    flags, block_16_id = divmod(level['mappings_256'].word(i*0x200+y*0x20+x*2), 0x200)
                     flip_x, flip_y = bool(flags & 0x400), bool(flags & 0x800)
                     try:
-                        painter.drawImage(x*16, y*16, self.level['blocks_16'][block_16_id].mirrored(horizontal = flip_x, vertical = flip_y))
+                        painter.drawImage(x*16, y*16, level['blocks_16'][block_16_id].mirrored(horizontal = flip_x, vertical = flip_y))
                     except IndexError:
                         pass
 
             blocks_256.append(block)
-        self.level['blocks'] = blocks_256
+        level['blocks'] = blocks_256
+
+        return level
 
 
 class Canvas(BaseCanvas):
     def updateImage(self):
         super(Canvas, self).updateImage()
         from PyQt4 import QtGui, QtCore
+        self.max_camera = QtCore.QPoint(256*0x40, 256*8)
         self.old_camera = QtCore.QPoint(self.camera)
         self.camera += self.delta
+        if self.camera.x() < 0:
+            self.camera.setX(0)
+        if self.camera.y() < 0:
+            self.camera.setY(0)
+        if self.camera.x() + self.width() > self.max_camera.x():
+            self.camera.setX(self.max_camera.x()-self.width())
+        if self.camera.y() + self.height() > self.max_camera.y():
+            self.camera.setY(self.max_camera.y()-self.height())
+        
         self.setMouseTracking(True)
         painter = QtGui.QPainter(self.image)
 
-        foreground = self.parent().rom.level['foreground']
-        blocks = self.parent().rom.level['blocks']
+        foreground = self.parent().current_level['foreground']
+        blocks = self.parent().current_level['blocks']
 
         x_start = (self.camera.x() >> 8)-1
         x_end = x_start + (self.width() >> 8)+3
@@ -252,7 +264,10 @@ class Canvas(BaseCanvas):
             level_painter = QtGui.QPainter(self.level_image)
             for y in range(y_start, y_end):
                 for x in range(x_start, x_end):
-                    block_id = foreground[y][x]
+                    try:
+                        block_id = foreground[y][x]
+                    except IndexError:
+                        pass
                     if block_id:
                         try:
                             level_painter.drawImage((x-x_start)*256, (y-y_start)*256, blocks[block_id-1])
@@ -287,7 +302,7 @@ class Canvas(BaseCanvas):
 
     def updateMouse(self, event):
         def speed(distance):
-            speed = (50-abs(distance))/10
+            speed = (50-distance)/10
             if self.pressed:
                 speed *= 3
             return speed
@@ -353,9 +368,19 @@ class Editor(BaseEditor):
 
         rom = RistarROM()
         rom.load('./roms/Ristar - The Shooting Star (J) [!].bin')
-        rom.load_level(12)
 
-        self.rom = rom
+        levels = {}
+        for level_id in rom.levels:
+            try:
+                if level_id < 0x5:
+                    levels[level_id] = rom.load_level(level_id)
+            except Exception as e:
+                print 'Could not load level {id}'.format(id=level_id)
+
+        self.project = rom
+
+        self.levels = levels
+        self.current_level = levels[1]
 
     def createCanvas(self):
         self.canvas = Canvas()

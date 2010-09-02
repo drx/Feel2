@@ -88,6 +88,9 @@ class Canvas(QtGui.QWidget):
         self.image.fill(QtGui.QColor(0, 0, 0).rgb())
         
 
+class LevelSelector(QtGui.QWidget):
+    pass
+
 
 class Editor(QtGui.QWidget):
     def __init__(self):
@@ -109,3 +112,6 @@ class Editor(QtGui.QWidget):
 
     def createPane(self):
         self.pane = Pane()
+
+    def setLevels(self, levels):
+        pass
