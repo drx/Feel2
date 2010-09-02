@@ -20,8 +20,14 @@ class Canvas(QtGui.QWidget):
         super(Canvas, self).__init__()
 
         self.image = QtGui.QImage()
+        self.level_image = QtGui.QImage()
         self.camera = QtCore.QPoint(0, 0)
         self.delta = QtCore.QPoint(0, 0)
+
+        self.pressed = False
+
+        self.move_timer = QtCore.QTimer()
+        self.move_timer.setSingleShot(True)
 
         self.setBackgroundRole(QtGui.QPalette.Base)
         self.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
@@ -41,6 +47,41 @@ class Canvas(QtGui.QWidget):
             return
 
         painter.drawImage(self.rect(), self.image)
+        painter.setPen(QtCore.Qt.NoPen)
+        gradient = QtGui.QLinearGradient()
+        gradient.setColorAt(0.0, QtGui.QColor(255, 255, 255, 0))
+        if self.pressed:
+            gradient.setColorAt(1.0, QtGui.QColor(255, 255, 255, 96))
+        else:
+            gradient.setColorAt(1.0, QtGui.QColor(255, 255, 255, 64))
+
+        if self.delta.x() > 0:
+            rect = QtCore.QRect(self.width()-50, 0, 50, self.height())
+            gradient.setStart(self.width()-50, 0)
+            gradient.setFinalStop(self.width(), 0)
+            painter.setBrush(QtGui.QBrush(gradient))
+            painter.drawRect(rect)
+
+        if self.delta.x() < 0:
+            rect = QtCore.QRect(0, 0, 50, self.height())
+            gradient.setStart(50, 0)
+            gradient.setFinalStop(0, 0)
+            painter.setBrush(QtGui.QBrush(gradient))
+            painter.drawRect(rect)
+
+        if self.delta.y() > 0:
+            rect = QtCore.QRect(0, self.height()-50, self.width(), 50)
+            gradient.setStart(0, self.height()-50)
+            gradient.setFinalStop(0, self.height())
+            painter.setBrush(QtGui.QBrush(gradient))
+            painter.drawRect(rect)
+
+        if self.delta.y() < 0:
+            rect = QtCore.QRect(0, 0, self.width(), 50)
+            gradient.setStart(0, 50)
+            gradient.setFinalStop(0, 0)
+            painter.setBrush(QtGui.QBrush(gradient))
+            painter.drawRect(rect)
 
     def updateImage(self):
         self.image = QtGui.QImage(self.width(), self.height(), QtGui.QImage.Format_ARGB32)

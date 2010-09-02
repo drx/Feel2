@@ -233,9 +233,10 @@ class RistarROM(ROM):
 class Canvas(BaseCanvas):
     def updateImage(self):
         super(Canvas, self).updateImage()
+        from PyQt4 import QtGui, QtCore
+        self.old_camera = QtCore.QPoint(self.camera)
         self.camera += self.delta
         self.setMouseTracking(True)
-        from PyQt4 import QtGui, QtCore
         painter = QtGui.QPainter(self.image)
 
         foreground = self.parent().rom.level['foreground']
@@ -246,33 +247,69 @@ class Canvas(BaseCanvas):
         y_start = (self.camera.y() >> 8)-1
         y_end = y_start + (self.height() >> 8)+3
 
-        self.level_image = QtGui.QImage((x_end-x_start)*256, (y_end-y_start)*256, QtGui.QImage.Format_ARGB32)
-        level_painter = QtGui.QPainter(self.level_image)
+        if (self.camera.x()>>8) != (self.old_camera.x()>>8) or (self.camera.y()>>8) != (self.old_camera.y()>>8) or self.level_image.isNull():
+            self.level_image = QtGui.QImage((x_end-x_start)*256, (y_end-y_start)*256, QtGui.QImage.Format_ARGB32)
+            level_painter = QtGui.QPainter(self.level_image)
+            for y in range(y_start, y_end):
+                for x in range(x_start, x_end):
+                    block_id = foreground[y][x]
+                    if block_id:
+                        try:
+                            level_painter.drawImage((x-x_start)*256, (y-y_start)*256, blocks[block_id-1])
+                        except IndexError:
+                            pass
 
         source_rect = self.level_image.rect()
         source_rect.setX((self.camera.x()&0xff)+256)
         source_rect.setWidth(self.width())
         source_rect.setY((self.camera.y()&0xff)+256)
         source_rect.setHeight(self.height())
-
-        for y in range(y_start, y_end):
-            for x in range(x_start, x_end):
-                block_id = foreground[y][x]
-                if block_id:
-                    try:
-                        level_painter.drawImage((x-x_start)*256, (y-y_start)*256, blocks[block_id-1])
-                    except IndexError:
-                        pass
         painter.drawImage(self.rect(), self.level_image, source_rect)
 
 
     def mouseMoveEvent(self, event):
         from PyQt4 import QtGui, QtCore
-        QtCore.QTimer.singleShot(200, self.startMoving)
+        #self.move_timer = QtCore.QTimer.singleShot(200, self.startMoving)
+        self.updateMouse(event)
+        #QtGui.QToolTip.showText(event.globalPos(), '{0}x{1}'.format(event.x(), event.y()), self, QtCore.QRect(event.pos(), QtCore.QPoint(1,1)))
+
+    def mousePressEvent(self, event):
+        self.pressed = True
+        self.updateMouse(event)
+
+    def mouseReleaseEvent(self, event):
+        self.pressed = False
+        self.updateMouse(event)
+
+    def leaveEvent(self, event):
+        self.delta.setX(0)
+        self.delta.setY(0)
+
+    def updateMouse(self, event):
+        def speed(distance):
+            speed = (50-abs(distance))/10
+            if self.pressed:
+                speed *= 3
+            return speed
+
+        if event.x() > self.width()-50:
+            self.delta.setX(speed(self.width()-event.x()))
+        elif event.x() < 50:
+            self.delta.setX(-speed(event.x()))
+        else:
+            self.delta.setX(0)
+
+        if event.y() > self.height()-50:
+            self.delta.setY(speed(self.height()-event.y()))
+        elif event.y() < 50:
+            self.delta.setY(-speed(event.y()))
+        else:
+            self.delta.setY(0)
+
 
     def startMoving(self):
-        self.delta.setX(12)
-        self.delta.setY(0)
+        #self.delta.setX(12)
+        #self.delta.setY(2)
 
         '''
         x = 10
