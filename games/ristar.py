@@ -467,7 +467,8 @@ class BlockSelector(QtGui.QWidget):
         self.current_block = None
         self.block_size = block_size
         self.blocks = blocks.values()
-        self.left = 0
+        self.delta = 0
+        self.pos = 0
 
         self.setMouseTracking(True)
 
@@ -476,14 +477,21 @@ class BlockSelector(QtGui.QWidget):
         timer.start(1000/30)
 
     def paintEvent(self, event):
-        x = 10
+        self.pos += self.delta
+        pos_max = len(self.blocks)*(self.height()-20)+10
+        if self.pos + self.width() > pos_max:
+            self.pos = pos_max-self.width()
+        if self.pos < 0:
+            self.pos = 0
+
+        x = 10-self.pos
         y = 10
         i = 0
         thumb_size = self.height()-20
         painter = QtGui.QPainter(self)
         painter.fillRect(self.rect(), QtCore.Qt.black)
 
-        for block_i, block in enumerate(self.blocks[self.left:]):
+        for block_i, block in enumerate(self.blocks):
             thumbnail = QtGui.QImage(block) 
             if self.current_block == block_i:
                 thumb_border = 0
@@ -493,15 +501,37 @@ class BlockSelector(QtGui.QWidget):
                 alpha.fill(0x808080)
                 thumbnail.setAlphaChannel(alpha)
 
-            painter.drawImage(QtCore.QRect(x+thumb_border, y+thumb_border, thumb_size-thumb_border*2, thumb_size-thumb_border*2), thumbnail, thumbnail.rect())
+            if -thumb_size+thumb_border*2 < x+thumb_border < self.width():
+                painter.drawImage(QtCore.QRect(x+thumb_border, y+thumb_border, thumb_size-thumb_border*2, thumb_size-thumb_border*2), thumbnail, thumbnail.rect())
             x += thumb_size
             i += 1
 
     def mouseMoveEvent(self, event):
-        self.current_block = (event.x()-10)/(self.height()-20)
+        self.current_block = (self.pos+event.x()-10)/(self.height()-20)
+        self.updateMouse(event)
 
     def mousePressEvent(self, event):
-        self.left += 1
+        self.pressed = True
+        self.updateMouse(event)
+
+    def mouseReleaseEvent(self, event):
+        self.pressed = False
+        self.updateMouse(event)
+
+    def leaveEvent(self, event):
+        self.delta = 0
+
+    def updateMouse(self, event):
+        def speed(distance):
+            speed = (50-distance)
+            return speed
+
+        if event.x() > self.width()-50:
+            self.delta = speed(self.width()-event.x())
+        elif event.x() < 50:
+            self.delta = -speed(event.x())
+        else:
+            self.delta = 0
 
 class LevelSelector(BlockSelector):
     def __init__(self, level_names, editor):
