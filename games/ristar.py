@@ -1,5 +1,6 @@
-from editor import Pane as BasePane, Canvas as BaseCanvas, Editor as BaseEditor
+from editor import Pane as BasePane, Canvas as BaseCanvas, Editor as BaseEditor, LevelSelector as BaseLevelSelector
 from compression import nemesis, star
+from PyQt4 import QtGui, QtCore
 
 import struct  # for Data
 
@@ -184,7 +185,6 @@ class RistarROM(ROM):
 
         '''Build 16x16 blocks'''
         blocks_16 = []
-        from PyQt4 import QtGui, QtCore
         for i in xrange(len(level['mappings_16'])/8):
             block = QtGui.QImage(16, 16, QtGui.QImage.Format_ARGB32)
             for x in range(2):
@@ -236,16 +236,19 @@ class Canvas(BaseCanvas):
     def updateImage(self):
         super(Canvas, self).updateImage()
         from PyQt4 import QtGui, QtCore
+        if not self.parent().level_loaded:
+            return
+
         self.max_camera = QtCore.QPoint(256*0x40, 256*8)
         self.old_camera = QtCore.QPoint(self.camera)
-        self.camera += self.delta
+        self.camera += self.delta/self.zoom
         if self.camera.x() < 0:
             self.camera.setX(0)
         if self.camera.y() < 0:
             self.camera.setY(0)
-        if self.camera.x() + self.width() > self.max_camera.x():
+        if self.camera.x() + self.width()/self.zoom > self.max_camera.x():
             self.camera.setX(self.max_camera.x()-self.width())
-        if self.camera.y() + self.height() > self.max_camera.y():
+        if self.camera.y() + self.height()/self.zoom > self.max_camera.y():
             self.camera.setY(self.max_camera.y()-self.height())
         
         self.setMouseTracking(True)
@@ -255,11 +258,16 @@ class Canvas(BaseCanvas):
         blocks = self.parent().current_level['blocks']
 
         x_start = (self.camera.x() >> 8)-1
-        x_end = x_start + (self.width() >> 8)+3
+        x_end = x_start + (int(self.width()/self.zoom) >> 8)+3
         y_start = (self.camera.y() >> 8)-1
-        y_end = y_start + (self.height() >> 8)+3
+        y_end = y_start + (int(self.height()/self.zoom) >> 8)+3
 
+        
         if (self.camera.x()>>8) != (self.old_camera.x()>>8) or (self.camera.y()>>8) != (self.old_camera.y()>>8) or self.level_image.isNull():
+            self.reload = True
+
+        if self.reload:
+            self.reload = False
             self.level_image = QtGui.QImage((x_end-x_start)*256, (y_end-y_start)*256, QtGui.QImage.Format_ARGB32)
             level_painter = QtGui.QPainter(self.level_image)
             for y in range(y_start, y_end):
@@ -276,9 +284,9 @@ class Canvas(BaseCanvas):
 
         source_rect = self.level_image.rect()
         source_rect.setX((self.camera.x()&0xff)+256)
-        source_rect.setWidth(self.width())
+        source_rect.setWidth(self.width()/self.zoom)
         source_rect.setY((self.camera.y()&0xff)+256)
-        source_rect.setHeight(self.height())
+        source_rect.setHeight(self.height()/self.zoom)
         painter.drawImage(self.rect(), self.level_image, source_rect)
 
 
@@ -299,6 +307,12 @@ class Canvas(BaseCanvas):
     def leaveEvent(self, event):
         self.delta.setX(0)
         self.delta.setY(0)
+
+    def wheelEvent(self, event):
+        steps = event.delta() / (8*15)
+        if event.orientation() == QtCore.Qt.Vertical:
+            self.zoom += (0.1*steps)*self.zoom
+            self.reload = True
 
     def updateMouse(self, event):
         def speed(distance):
@@ -361,26 +375,129 @@ class Canvas(BaseCanvas):
                 x = 10
                 y += 256
         '''
+
+class LoadLevels(QtCore.QThread):
+    started = QtCore.pyqtSignal(int)
+    progress = QtCore.pyqtSignal(int)
+    loaded = QtCore.pyqtSignal(object, object, Project)
+
+    @staticmethod
+    def entropy(image):
+        import zlib, base64
+        buf = QtCore.QBuffer()
+        buf.open(QtCore.QBuffer.ReadWrite)
+        image.save(buf, 'PNG')
+        data = base64.b64decode(buf.buffer().toBase64())
+        return len(zlib.compress(data))
+
+    def run(self):
+        rom = RistarROM()
+        rom.load('./roms/Ristar - The Shooting Star (J) [!].bin')
+
+        self.started.emit(len(rom.levels))
+
+        levels = {}
+        thumbnails = {}
+        i = 0
+        for level_id in rom.levels:
+            if level_id > 3:
+                break
+            try:
+                levels[level_id] = rom.load_level(level_id)
+            except Exception as e:
+                print 'Could not load level {id} ({e})'.format(id=level_id, e=e)
+
+            # select block with biggest entropy for thumbnail
+            blocks_entropy = map(self.entropy, levels[level_id]['blocks'])
+            thumbnails[level_id] = blocks_entropy.index(max(blocks_entropy))
+
+            i += 1
+            self.progress.emit(i)
+
+        self.loaded.emit(levels, thumbnails, rom)
+
+
+class LevelSelector(BaseLevelSelector):
+    def __init__(self, level_names):
+        super(LevelSelector, self).__init__()
+
+        self.level_names = level_names
+        self.current_thumb = None
+
+        self.setMouseTracking(True)
+
+        timer = QtCore.QTimer(self)
+        timer.timeout.connect(self.update)
+        timer.start(1000/30)
+
+    def paintEvent(self, event):
+        x = 10
+        y = 10
+        i = 0
+        thumb_size = self.height()-20
+        painter = QtGui.QPainter(self)
+        painter.fillRect(self.rect(), QtCore.Qt.black)
+
+        for level_id, thumbnail_id in self.editor.thumbnails.items():
+            thumbnail = QtGui.QImage(self.editor.levels[level_id]['blocks'][thumbnail_id])
+
+            if self.current_thumb == level_id:
+                thumb_border = 0
+            else:
+                thumb_border = 5
+    
+                alpha = QtGui.QImage(256, 256, QtGui.QImage.Format_RGB32)
+                alpha.fill(0x808080)
+                thumbnail.setAlphaChannel(alpha)
+
+            painter.drawImage(QtCore.QRect(x+thumb_border, y+thumb_border, thumb_size-thumb_border*2, thumb_size-thumb_border*2), thumbnail, thumbnail.rect())
+            x += thumb_size
+            i += 1
+
+    def mouseMoveEvent(self, event):
+        self.current_thumb = (event.x()-10)/(self.height()-20)
+
+
+class Pane(BasePane):
+    def keyPressEvent(self, event):
+        self.update()
+        self.load_thread = LoadLevels()
+        self.load_thread.started.connect(self.started)
+        self.load_thread.progress.connect(self.progress)
+        self.load_thread.loaded.connect(self.loaded)
+        self.load_thread.start(QtCore.QThread.IdlePriority)
+
+    def started(self, steps):
+        self.parent().progress.setVisible(True)
+        self.parent().progress.setMaximum(steps)
+
+    def progress(self, step):
+        self.parent().progress.setValue(step)
+
+    def loaded(self, levels, thumbnails, project):
+        self.parent().progress.setVisible(False)
+        self.parent().project = project
+        self.parent().levels = levels
+        self.parent().thumbnails = thumbnails
+        self.parent().current_level = levels[0]
+        self.parent().level_loaded = True
+
+        self.level_selector = LevelSelector(project.levels)
+        self.level_selector.editor = self.parent()
+
+        self.addTab(self.level_selector, 'Levels')
+        self.addTab(BaseLevelSelector(), 'Levels')
+
     
 class Editor(BaseEditor):
     def __init__(self):
         super(Editor, self).__init__()
 
-        rom = RistarROM()
-        rom.load('./roms/Ristar - The Shooting Star (J) [!].bin')
+        self.level_loaded = False
 
-        levels = {}
-        for level_id in rom.levels:
-            try:
-                if level_id < 0x5:
-                    levels[level_id] = rom.load_level(level_id)
-            except Exception as e:
-                print 'Could not load level {id}'.format(id=level_id)
-
-        self.project = rom
-
-        self.levels = levels
-        self.current_level = levels[1]
 
     def createCanvas(self):
         self.canvas = Canvas()
+
+    def createPane(self):
+        self.pane = Pane()

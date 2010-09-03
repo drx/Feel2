@@ -5,7 +5,12 @@ from games.ristar import Editor
 
 
 def main(argv): 
+
     app = QtGui.QApplication(argv)
+    app.setStyle(QtGui.QStyleFactory.create('Plastique'))
+
+    stylesheet = open('stylesheet.qss', 'r').read()
+    app.setStyleSheet(stylesheet)
  
     window = Editor()
     window.show() 

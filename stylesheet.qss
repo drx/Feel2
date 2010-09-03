@@ -1,0 +1,66 @@
+QWidget
+{
+    background-color: #000000;
+    color: #ffffff;
+}
+QProgressBar
+{
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2: 1, stop: 0 #222222, stop: 1 #444444);
+    color: #ffffff;
+    border-radius: 5px;
+    text-align: center;
+}
+QProgressBar::chunk
+{
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2: 1, stop: 0 #555555, stop: 1 #777777);
+    margin: 1px;
+}
+QTabWidget::tab-bar
+{
+    left: 6px;
+}
+QTabWidget::pane
+{
+    border: 1px solid #333333;
+    border-radius: 5px;
+}
+QTabBar::tab
+{
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                 stop: 0 #212121, stop: 0.4 #1d1d1d,
+                                 stop: 0.5 #181818, stop: 1.0 #131313);
+    border: 2px solid #242423;
+    border-bottom-color: #22272B; /* same as the pane color */
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    min-width: 8ex;
+    padding: 2px;
+
+}
+QTabBar::tab:selected, QTabBar::tab:hover {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #4a4a4a, stop: 0.4 #444444,
+                                stop: 0.5 #373737, stop: 1.0 #4a4a4a);
+}
+
+QTabBar::tab:!selected {
+    margin-top: 2px; /* make non-selected tabs look smaller */
+}
+/* make use of negative margins for overlapping tabs */
+QTabBar::tab:selected {
+    /* expand/overlap to the left and right by 4px */
+    margin-left: -4px;
+    margin-right: -4px;
+}
+
+QTabBar::tab:first:selected {
+    margin-left: 0; /* the first selected tab has nothing to overlap with on the left */
+}
+
+QTabBar::tab:last:selected {
+    margin-right: 0; /* the last selected tab has nothing to overlap with on the right */
+}
+
+QTabBar::tab:only-one {
+    margin: 0; /* if there is only one tab, we don't want overlapping margins */
+}

@@ -5,9 +5,9 @@ class Pane(QtGui.QTabWidget):
     def __init__(self, parent=None):
         super(Pane, self).__init__(parent)
 
-        self.addTab(QtGui.QWidget(), "Level info")
-        self.addTab(QtGui.QWidget(), "Tiles")
-        self.addTab(QtGui.QWidget(), "Objects")
+        #self.addTab(QtGui.QWidget(), "Level info")
+        #self.addTab(QtGui.QWidget(), "Tiles")
+        #self.addTab(QtGui.QWidget(), "Objects")
 
         self.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Maximum)
 
@@ -23,8 +23,10 @@ class Canvas(QtGui.QWidget):
         self.level_image = QtGui.QImage()
         self.camera = QtCore.QPoint(0, 0)
         self.delta = QtCore.QPoint(0, 0)
-
         self.pressed = False
+        self.zoom = 1.0
+
+        self.reload = False
 
         self.move_timer = QtCore.QTimer()
         self.move_timer.setSingleShot(True)
@@ -92,6 +94,10 @@ class LevelSelector(QtGui.QWidget):
     pass
 
 
+class ProgressBar(QtGui.QProgressBar):
+    pass
+
+
 class Editor(QtGui.QWidget):
     def __init__(self):
         super(Editor, self).__init__()
@@ -100,10 +106,12 @@ class Editor(QtGui.QWidget):
 
         self.createCanvas()
         self.createPane()
-
+        self.progress = ProgressBar()
+        self.progress.setVisible(False)
         layout = QtGui.QVBoxLayout()
         layout.addWidget(self.canvas)
         layout.addWidget(self.pane)
+        layout.addWidget(self.progress)
 
         self.setLayout(layout)
 
