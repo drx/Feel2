@@ -4,6 +4,22 @@ from PyQt4 import QtGui, QtCore
 
 import struct  # for Data
 
+
+def image_entropy(image):
+    import zlib, base64
+    buf = QtCore.QBuffer()
+    buf.open(QtCore.QBuffer.ReadWrite)
+    image.save(buf, 'PNG')
+    data = base64.b64decode(buf.buffer().toBase64())
+    return len(zlib.compress(data))
+
+
+def image_set_alpha(image, alpha_value):
+    alpha = QtGui.QImage(image.width(), image.height(), QtGui.QImage.Format_RGB32)
+    alpha.fill((alpha_value<<16)+(alpha_value<<8)+alpha_value)
+    image.setAlphaChannel(alpha)
+
+
 class Data(str):
     #def __new__(cls, value, *args, **kwargs):
     #    return str.__new__(cls, value)
@@ -260,6 +276,10 @@ class RistarROM(ROM):
 
 
 class Canvas(BaseCanvas):
+    def reset(self):
+        self.camera.setX(0)
+        self.camera.setY(0)
+
     def updateImage(self):
         super(Canvas, self).updateImage()
         from PyQt4 import QtGui, QtCore
@@ -282,9 +302,9 @@ class Canvas(BaseCanvas):
         if self.camera.y() < 0:
             self.camera.setY(0)
         if self.camera.x() + self.width()/self.zoom > self.max_camera.x():
-            self.camera.setX(self.max_camera.x()-self.width())
+            self.camera.setX(self.max_camera.x()-self.width()/self.zoom)
         if self.camera.y() + self.height()/self.zoom > self.max_camera.y():
-            self.camera.setY(self.max_camera.y()-self.height())
+            self.camera.setY(self.max_camera.y()-self.height()/self.zoom)
         
         self.setMouseTracking(True)
         painter = QtGui.QPainter(self.image)
@@ -319,6 +339,11 @@ class Canvas(BaseCanvas):
                             level_painter.drawImage((x-x_start)*self.block_size, (y-y_start)*self.block_size, blocks_foreground[foreground_block_id-1])
                         except IndexError:
                             pass
+                    if (x,y) == (2,2):
+                        hover_block = QtGui.QImage(blocks_foreground[12])
+                        image_set_alpha(hover_block, 0x80)
+                        level_painter.drawImage((x-x_start)*self.block_size, (y-y_start)*self.block_size, hover_block)
+                        
         
 
         source_rect = self.level_image.rect()
@@ -423,14 +448,6 @@ class LoadLevels(QtCore.QThread):
     progress = QtCore.pyqtSignal(int)
     loaded = QtCore.pyqtSignal(object, object, Project)
 
-    @staticmethod
-    def entropy(image):
-        import zlib, base64
-        buf = QtCore.QBuffer()
-        buf.open(QtCore.QBuffer.ReadWrite)
-        image.save(buf, 'PNG')
-        data = base64.b64decode(buf.buffer().toBase64())
-        return len(zlib.compress(data))
 
     def run(self):
         rom = RistarROM()
@@ -443,7 +460,7 @@ class LoadLevels(QtCore.QThread):
         thumbnails = {}
         i = 0
         for level_id in rom.levels:
-            if level_id > 0x15:
+            if level_id > 3:
                 break
             try:
                 levels[level_id] = rom.load_level(level_id)
@@ -451,7 +468,7 @@ class LoadLevels(QtCore.QThread):
                 print 'Could not load level {id} ({e})'.format(id=level_id, e=e)
 
             # select block with biggest entropy for thumbnail
-            blocks_entropy = map(self.entropy, levels[level_id]['blocks_foreground'])
+            blocks_entropy = map(image_entropy, levels[level_id]['blocks_foreground'])
             thumbnails[level_id] = blocks_entropy.index(max(blocks_entropy))
 
             i += 1
@@ -461,10 +478,13 @@ class LoadLevels(QtCore.QThread):
 
 
 class BlockSelector(QtGui.QWidget):
+    selected = QtCore.pyqtSignal(int)
+
     def __init__(self, blocks, block_size=256):
         super(BlockSelector, self).__init__()
 
         self.current_block = None
+        self.selected_block = None
         self.block_size = block_size
         self.blocks = blocks.values()
         self.delta = 0
@@ -475,6 +495,10 @@ class BlockSelector(QtGui.QWidget):
         timer = QtCore.QTimer(self)
         timer.timeout.connect(self.update)
         timer.start(1000/30)
+
+    def reset(self):
+        self.selected_block = None
+        self.pos = 0
 
     def paintEvent(self, event):
         self.pos += self.delta
@@ -494,15 +518,19 @@ class BlockSelector(QtGui.QWidget):
         for block_i, block in enumerate(self.blocks):
             thumbnail = QtGui.QImage(block) 
             if self.current_block == block_i:
-                thumb_border = 0
+                thumb_margin = 0
             else:
-                thumb_border = 5
-                alpha = QtGui.QImage(self.block_size, self.block_size, QtGui.QImage.Format_RGB32)
-                alpha.fill(0x808080)
-                thumbnail.setAlphaChannel(alpha)
+                thumb_margin = 5
+                image_set_alpha(thumbnail, 0x80)
 
-            if -thumb_size+thumb_border*2 < x+thumb_border < self.width():
-                painter.drawImage(QtCore.QRect(x+thumb_border, y+thumb_border, thumb_size-thumb_border*2, thumb_size-thumb_border*2), thumbnail, thumbnail.rect())
+            thumb_rect = QtCore.QRect(x+thumb_margin, y+thumb_margin, thumb_size-thumb_margin*2, thumb_size-thumb_margin*2)
+            if self.selected_block == block_i:
+                painter.setPen(QtCore.Qt.gray)
+                border_rect = thumb_rect.adjusted(-1, -1, 1, 1)
+                painter.drawRect(border_rect)
+
+            if -thumb_size+thumb_margin*2 < x+thumb_margin < self.width():
+                painter.drawImage(thumb_rect, thumbnail, thumbnail.rect())
             x += thumb_size
             i += 1
 
@@ -512,6 +540,9 @@ class BlockSelector(QtGui.QWidget):
 
     def mousePressEvent(self, event):
         self.pressed = True
+        if self.current_block is not None:
+            self.selected_block = self.current_block
+            self.selected.emit(self.selected_block)
         self.updateMouse(event)
 
     def mouseReleaseEvent(self, event):
@@ -520,6 +551,7 @@ class BlockSelector(QtGui.QWidget):
 
     def leaveEvent(self, event):
         self.delta = 0
+        self.current_block = None
 
     def updateMouse(self, event):
         def speed(distance):
@@ -540,11 +572,6 @@ class LevelSelector(BlockSelector):
         super(LevelSelector, self).__init__(blocks)
 
         self.level_names = level_names
-
-    def mousePressEvent(self, event):
-        if self.current_block is not None:
-            self.editor.current_level = self.editor.levels[self.current_block]
-            self.editor.canvas.reload = True
 
 
 class Pane(BasePane):
@@ -568,14 +595,29 @@ class Pane(BasePane):
         self.parent().project = project
         self.parent().levels = levels
         self.parent().thumbnails = thumbnails
-        self.parent().current_level = levels[0]
-        self.parent().level_loaded = True
 
         self.level_selector = LevelSelector(project.levels, editor=self.parent())
-        self.foreground_selector = BlockSelector(dict(enumerate(levels[0]['blocks_foreground'])))
+        self.level_selector.selected.connect(self.set_level)
+        self.foreground_selector = BlockSelector({})
+        self.background_selector = BlockSelector({})
+
+        self.set_level(0)
 
         self.addTab(self.level_selector, 'Levels')
         self.addTab(self.foreground_selector, 'Foreground')
+        self.addTab(self.background_selector, 'Background')
+
+    def set_level(self, level_id):
+        self.parent().current_level = self.parent().levels[level_id]
+        self.parent().canvas.reset()
+        self.foreground_selector.blocks = dict(enumerate(self.parent().levels[level_id]['blocks_foreground'])).values()
+        self.foreground_selector.reset()
+        self.background_selector.blocks = dict(enumerate(self.parent().levels[level_id]['blocks_background'])).values()
+        self.background_selector.reset()
+        self.parent().level_loaded = True
+        self.parent().canvas.reload = True
+
+
 
     
 class Editor(BaseEditor):
