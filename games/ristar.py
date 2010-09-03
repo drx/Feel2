@@ -172,15 +172,15 @@ class RistarROM(ROM):
         x, y = self.data[address]+1, self.data[address+1]+1
         address += 2
        
-        layout = 8*[None] 
-        for cur_y in xrange(8):
-            layout_line = 0x40*[None]
+        layout = []
+        for cur_y in xrange(y):
+            layout_line = []
             for cur_x in xrange(x):
-                layout_line[cur_x] = self.data[address]
+                layout_line.append(self.data[address])
                 address += 1
-            layout[cur_y] = layout_line
+            layout.append(layout_line)
 
-        level['foreground'] = layout
+        level['foreground'] = {'x': x, 'y': y, 'layout': layout}
 
 
         '''Build 16x16 blocks'''
@@ -190,8 +190,8 @@ class RistarROM(ROM):
             for x in range(2):
                 for y in range(2):
                     flags, tile_id = divmod(level['mappings_16'].word(i*8+y*4+x*2), 0x800)
-                    flip_x, flip_y = flags & 0x800, flags & 0x1000
-                    palette_line = (flags & 0x6000) >> 13
+                    flip_x, flip_y = flags & 0x1, flags & 0x2
+                    palette_line = (flags & 0xc) >> 2
 
                     tile_data = level['tiles'][tile_id*0x20:(tile_id+1)*0x20]
                     tile_i = 0
@@ -203,9 +203,9 @@ class RistarROM(ROM):
                             color = level['palette'][palette_line*0x10+palette_cell]
                             set_x, set_y = tile_x+k, tile_y
                             if flip_x:
-                                set_x = 8-set_x
+                                set_x = 7-set_x
                             if flip_y:
-                                set_y = 8-set_y
+                                set_y = 7-set_y
                             block.setPixel(x*8+set_x, y*8+set_y, color)
                         tile_i += 2
 
@@ -220,7 +220,7 @@ class RistarROM(ROM):
             for x in range(16):
                 for y in range(16):
                     flags, block_16_id = divmod(level['mappings_256'].word(i*0x200+y*0x20+x*2), 0x200)
-                    flip_x, flip_y = bool(flags & 0x400), bool(flags & 0x800)
+                    flip_x, flip_y = bool(flags & 0x2), bool(flags & 0x4)
                     try:
                         painter.drawImage(x*16, y*16, level['blocks_16'][block_16_id].mirrored(horizontal = flip_x, vertical = flip_y))
                     except IndexError:
@@ -239,7 +239,10 @@ class Canvas(BaseCanvas):
         if not self.parent().level_loaded:
             return
 
-        self.max_camera = QtCore.QPoint(256*0x40, 256*8)
+        foreground = self.parent().current_level['foreground']
+        blocks = self.parent().current_level['blocks']
+
+        self.max_camera = QtCore.QPoint(256*foreground['x'], 256*foreground['y'])
         self.old_camera = QtCore.QPoint(self.camera)
         self.camera += self.delta/self.zoom
         if self.camera.x() < 0:
@@ -254,9 +257,6 @@ class Canvas(BaseCanvas):
         self.setMouseTracking(True)
         painter = QtGui.QPainter(self.image)
 
-        foreground = self.parent().current_level['foreground']
-        blocks = self.parent().current_level['blocks']
-
         x_start = (self.camera.x() >> 8)-1
         x_end = x_start + (int(self.width()/self.zoom) >> 8)+3
         y_start = (self.camera.y() >> 8)-1
@@ -270,10 +270,11 @@ class Canvas(BaseCanvas):
             self.reload = False
             self.level_image = QtGui.QImage((x_end-x_start)*256, (y_end-y_start)*256, QtGui.QImage.Format_ARGB32)
             level_painter = QtGui.QPainter(self.level_image)
+            level_painter.fillRect(self.level_image.rect(), QtCore.Qt.black)
             for y in range(y_start, y_end):
                 for x in range(x_start, x_end):
                     try:
-                        block_id = foreground[y][x]
+                        block_id = foreground['layout'][y][x]
                     except IndexError:
                         pass
                     if block_id:
@@ -457,15 +458,20 @@ class LevelSelector(BaseLevelSelector):
     def mouseMoveEvent(self, event):
         self.current_thumb = (event.x()-10)/(self.height()-20)
 
+    def mousePressEvent(self, event):
+        if self.current_thumb:
+            self.editor.current_level = self.editor.levels[self.current_thumb]
+            self.editor.canvas.reload = True
+
 
 class Pane(BasePane):
     def keyPressEvent(self, event):
-        self.update()
-        self.load_thread = LoadLevels()
-        self.load_thread.started.connect(self.started)
-        self.load_thread.progress.connect(self.progress)
-        self.load_thread.loaded.connect(self.loaded)
-        self.load_thread.start(QtCore.QThread.IdlePriority)
+        if event.key() == QtCore.Qt.Key_L:
+            self.load_thread = LoadLevels()
+            self.load_thread.started.connect(self.started)
+            self.load_thread.progress.connect(self.progress)
+            self.load_thread.loaded.connect(self.loaded)
+            self.load_thread.start(QtCore.QThread.IdlePriority)
 
     def started(self, steps):
         self.parent().progress.setVisible(True)
@@ -486,7 +492,6 @@ class Pane(BasePane):
         self.level_selector.editor = self.parent()
 
         self.addTab(self.level_selector, 'Levels')
-        self.addTab(BaseLevelSelector(), 'Levels')
 
     
 class Editor(BaseEditor):
