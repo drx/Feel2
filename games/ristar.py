@@ -297,14 +297,14 @@ class Canvas(BaseCanvas):
         self.max_camera = QtCore.QPoint(self.block_size*foreground['x'], self.block_size*foreground['y'])
         self.old_camera = QtCore.QPoint(self.camera)
         self.camera += self.delta/self.zoom
-        if self.camera.x() < 0:
-            self.camera.setX(0)
-        if self.camera.y() < 0:
-            self.camera.setY(0)
         if self.camera.x() + self.width()/self.zoom > self.max_camera.x():
             self.camera.setX(self.max_camera.x()-self.width()/self.zoom)
         if self.camera.y() + self.height()/self.zoom > self.max_camera.y():
             self.camera.setY(self.max_camera.y()-self.height()/self.zoom)
+        if self.camera.x() < 0:
+            self.camera.setX(0)
+        if self.camera.y() < 0:
+            self.camera.setY(0)
         
         self.setMouseTracking(True)
         painter = QtGui.QPainter(self.image)
@@ -490,13 +490,14 @@ class ProjectLoader(QtCore.QThread):
 class BlockSelector(QtGui.QWidget):
     selected = QtCore.pyqtSignal(int)
 
-    def __init__(self, blocks, block_size=256):
+    def __init__(self, blocks, block_names=None, block_size=256):
         super(BlockSelector, self).__init__()
 
         self.current_block = None
         self.selected_block = None
         self.block_size = block_size
-        self.blocks = blocks.values()
+        self.blocks = blocks
+        self.block_names = block_names
         self.delta = 0
         self.pos = 0
 
@@ -505,6 +506,20 @@ class BlockSelector(QtGui.QWidget):
         timer = QtCore.QTimer(self)
         timer.timeout.connect(self.update)
         timer.start(1000/30)
+
+    @property
+    def blocks(self):
+        return self._blocks
+
+    @blocks.setter
+    def blocks(self, value):
+        self._blocks = value
+        self.block_list = sorted(value.keys())
+
+    @blocks.deleter
+    def blocks(self):
+        del self._blocks
+        del self.block_list        
 
     def reset(self):
         self.selected_block = None
@@ -525,16 +540,17 @@ class BlockSelector(QtGui.QWidget):
         painter = QtGui.QPainter(self)
         painter.fillRect(self.rect(), QtCore.Qt.black)
 
-        for block_i, block in enumerate(self.blocks):
+        for block_id in self.block_list:
+            block = self.blocks[block_id]
             thumbnail = QtGui.QImage(block) 
-            if self.current_block == block_i:
+            if self.current_block == block_id:
                 thumb_margin = 0
             else:
                 thumb_margin = 5
                 image_set_alpha(thumbnail, 0x80)
 
             thumb_rect = QtCore.QRect(x+thumb_margin, y+thumb_margin, thumb_size-thumb_margin*2, thumb_size-thumb_margin*2)
-            if self.selected_block == block_i:
+            if self.selected_block == block_id:
                 painter.setPen(QtCore.Qt.gray)
                 border_rect = thumb_rect.adjusted(-1, -1, 1, 1)
                 painter.drawRect(border_rect)
@@ -544,8 +560,23 @@ class BlockSelector(QtGui.QWidget):
             x += thumb_size
             i += 1
 
+        if self.current_block is not None and self.block_names is not None and self.current_block in self.block_names:
+            painter.setPen(QtCore.Qt.NoPen)
+            painter.setBrush(QtGui.QColor(0, 0, 0, 128))
+            rect = QtCore.QRect(0, self.height()-40, self.width(), 40)
+            painter.drawRect(rect)
+            painter.setPen(QtCore.Qt.white)
+            painter.setFont(QtGui.QFont("Helvetica", 12))
+            painter.drawText(rect, QtCore.Qt.AlignCenter, self.block_names[self.current_block])
+
     def mouseMoveEvent(self, event):
-        self.current_block = (self.pos+event.x()-10)/(self.height()-20)
+        try:
+            if self.pos+event.x() >= 10:
+                self.current_block = self.block_list[(self.pos+event.x()-10)/(self.height()-20)]
+            else:
+                self.current_block = None
+        except IndexError:
+            self.current_block = None
         self.updateMouse(event)
 
     def mousePressEvent(self, event):
@@ -579,7 +610,7 @@ class LevelSelector(BlockSelector):
     def __init__(self, level_names, editor):
         self.editor = editor
         blocks = dict((level_id, self.editor.levels[level_id]['blocks_foreground'][thumbnail_id]) for (level_id, thumbnail_id) in self.editor.thumbnails.items())
-        super(LevelSelector, self).__init__(blocks)
+        super(LevelSelector, self).__init__(blocks, block_names=level_names)
 
         self.level_names = level_names
 
@@ -593,6 +624,7 @@ class Editor(BaseEditor):
         super(Editor, self).__init__()
 
         self.level_loaded = False
+        self.show_pane = True
 
     def createCanvas(self):
         self.canvas = Canvas()
@@ -605,6 +637,10 @@ class Editor(BaseEditor):
             self.load_rom('./roms/Ristar - The Shooting Star (J) [!].bin')
         elif event.key() == QtCore.Qt.Key_0:
             self.canvas.zoom = 1.0
+            self.canvas.reload = True
+        elif event.key() == QtCore.Qt.Key_P and event.modifiers() & QtCore.Qt.ControlModifier:
+            self.show_pane = not self.show_pane
+            self.pane.setVisible(self.show_pane)
         else:
             event.ignore()
             super(Editor, self).keyPressEvent(event)
@@ -645,9 +681,9 @@ class Editor(BaseEditor):
         self.current_level = self.levels[level_id]
         self.canvas.reset()
         self.level_selector.selected_block = level_id
-        self.foreground_selector.blocks = dict(enumerate(self.levels[level_id]['blocks_foreground'])).values()
+        self.foreground_selector.blocks = dict(enumerate(self.levels[level_id]['blocks_foreground']))
         self.foreground_selector.reset()
-        self.background_selector.blocks = dict(enumerate(self.levels[level_id]['blocks_background'])).values()
+        self.background_selector.blocks = dict(enumerate(self.levels[level_id]['blocks_background']))
         self.background_selector.reset()
         self.level_loaded = True
         self.canvas.reload = True
