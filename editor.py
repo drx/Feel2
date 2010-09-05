@@ -106,12 +106,12 @@ class Editor(QtGui.QWidget):
 
         self.createCanvas()
         self.createPane()
-        self.progress = ProgressBar()
-        self.progress.setVisible(False)
+        self.progress_bar = ProgressBar()
+        self.progress_bar.setVisible(False)
         layout = QtGui.QVBoxLayout()
         layout.addWidget(self.canvas)
         layout.addWidget(self.pane)
-        layout.addWidget(self.progress)
+        layout.addWidget(self.progress_bar)
 
         self.setLayout(layout)
 

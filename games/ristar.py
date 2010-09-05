@@ -378,8 +378,15 @@ class Canvas(BaseCanvas):
     def wheelEvent(self, event):
         steps = event.delta() / (8*15)
         if event.orientation() == QtCore.Qt.Vertical:
-            self.zoom += (0.1*steps)*self.zoom
-            self.reload = True
+            self.zoomBy(steps)
+
+    def zoomBy(self, steps):
+        self.zoom += (0.1*steps)*self.zoom
+        if self.zoom < 0.1:
+            self.zoom = 0.1
+        if self.zoom > 10:
+            self.zoom = 10
+        self.reload = True
 
     def updateMouse(self, event):
         def speed(distance):
@@ -575,49 +582,7 @@ class LevelSelector(BlockSelector):
 
 
 class Pane(BasePane):
-    def keyPressEvent(self, event):
-        if event.key() == QtCore.Qt.Key_L:
-            self.load_thread = LoadLevels()
-            self.load_thread.started.connect(self.started)
-            self.load_thread.progress.connect(self.progress)
-            self.load_thread.loaded.connect(self.loaded)
-            self.load_thread.start(QtCore.QThread.IdlePriority)
-
-    def started(self, steps):
-        self.parent().progress.setVisible(True)
-        self.parent().progress.setMaximum(steps)
-
-    def progress(self, step):
-        self.parent().progress.setValue(step)
-
-    def loaded(self, levels, thumbnails, project):
-        self.parent().progress.setVisible(False)
-        self.parent().project = project
-        self.parent().levels = levels
-        self.parent().thumbnails = thumbnails
-
-        self.level_selector = LevelSelector(project.levels, editor=self.parent())
-        self.level_selector.selected.connect(self.set_level)
-        self.foreground_selector = BlockSelector({})
-        self.background_selector = BlockSelector({})
-
-        self.set_level(0)
-
-        self.addTab(self.level_selector, 'Levels')
-        self.addTab(self.foreground_selector, 'Foreground')
-        self.addTab(self.background_selector, 'Background')
-
-    def set_level(self, level_id):
-        self.parent().current_level = self.parent().levels[level_id]
-        self.parent().canvas.reset()
-        self.foreground_selector.blocks = dict(enumerate(self.parent().levels[level_id]['blocks_foreground'])).values()
-        self.foreground_selector.reset()
-        self.background_selector.blocks = dict(enumerate(self.parent().levels[level_id]['blocks_background'])).values()
-        self.background_selector.reset()
-        self.parent().level_loaded = True
-        self.parent().canvas.reload = True
-
-
+    pass
 
     
 class Editor(BaseEditor):
@@ -632,3 +597,50 @@ class Editor(BaseEditor):
 
     def createPane(self):
         self.pane = Pane()
+
+    def keyPressEvent(self, event):
+        if event.key() == QtCore.Qt.Key_L:
+            self.load_thread = LoadLevels()
+            self.load_thread.started.connect(self.started)
+            self.load_thread.progress.connect(self.progress)
+            self.load_thread.loaded.connect(self.loaded)
+            self.load_thread.start(QtCore.QThread.IdlePriority)
+        elif event.key() == QtCore.Qt.Key_0:
+            self.canvas.zoom = 1.0
+        else:
+            event.ignore()
+            super(Pane, self).keyPressEvent(event)
+
+    def started(self, steps):
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setMaximum(steps)
+
+    def progress(self, step):
+        self.progress_bar.setValue(step)
+
+    def loaded(self, levels, thumbnails, project):
+        self.progress_bar.setVisible(False)
+        self.project = project
+        self.levels = levels
+        self.thumbnails = thumbnails
+
+        self.level_selector = LevelSelector(project.levels, editor=self)
+        self.level_selector.selected.connect(self.set_level)
+        self.foreground_selector = BlockSelector({})
+        self.background_selector = BlockSelector({})
+
+        self.set_level(0)
+
+        self.pane.addTab(self.level_selector, 'Levels')
+        self.pane.addTab(self.foreground_selector, 'Foreground')
+        self.pane.addTab(self.background_selector, 'Background')
+
+    def set_level(self, level_id):
+        self.current_level = self.levels[level_id]
+        self.canvas.reset()
+        self.foreground_selector.blocks = dict(enumerate(self.levels[level_id]['blocks_foreground'])).values()
+        self.foreground_selector.reset()
+        self.background_selector.blocks = dict(enumerate(self.levels[level_id]['blocks_background'])).values()
+        self.background_selector.reset()
+        self.level_loaded = True
+        self.canvas.reload = True
