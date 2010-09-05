@@ -450,15 +450,18 @@ class Canvas(BaseCanvas):
                 y += 256
         '''
 
-class LoadLevels(QtCore.QThread):
+class ProjectLoader(QtCore.QThread):
     started = QtCore.pyqtSignal(int)
     progress = QtCore.pyqtSignal(int)
     loaded = QtCore.pyqtSignal(object, object, Project)
 
+    def __init__(self, filename):
+        super(ProjectLoader, self).__init__()
+        self.filename = filename
 
     def run(self):
         rom = RistarROM()
-        rom.load('./roms/Ristar - The Shooting Star (J) [!].bin')
+        rom.load(self.filename)
 
         self.started.emit(len(rom.levels))
         self.progress.emit(0)
@@ -591,7 +594,6 @@ class Editor(BaseEditor):
 
         self.level_loaded = False
 
-
     def createCanvas(self):
         self.canvas = Canvas()
 
@@ -600,16 +602,20 @@ class Editor(BaseEditor):
 
     def keyPressEvent(self, event):
         if event.key() == QtCore.Qt.Key_L:
-            self.load_thread = LoadLevels()
-            self.load_thread.started.connect(self.started)
-            self.load_thread.progress.connect(self.progress)
-            self.load_thread.loaded.connect(self.loaded)
-            self.load_thread.start(QtCore.QThread.IdlePriority)
+            self.load_rom('./roms/Ristar - The Shooting Star (J) [!].bin')
         elif event.key() == QtCore.Qt.Key_0:
             self.canvas.zoom = 1.0
         else:
             event.ignore()
-            super(Pane, self).keyPressEvent(event)
+            super(Editor, self).keyPressEvent(event)
+
+    def load_rom(self, filename):
+        self.project_loader = ProjectLoader(filename)
+        self.project_loader.started.connect(self.started)
+        self.project_loader.progress.connect(self.progress)
+        self.project_loader.loaded.connect(self.loaded)
+        self.project_loader.start(QtCore.QThread.IdlePriority)
+    
 
     def started(self, steps):
         self.progress_bar.setVisible(True)
@@ -638,6 +644,7 @@ class Editor(BaseEditor):
     def set_level(self, level_id):
         self.current_level = self.levels[level_id]
         self.canvas.reset()
+        self.level_selector.selected_block = level_id
         self.foreground_selector.blocks = dict(enumerate(self.levels[level_id]['blocks_foreground'])).values()
         self.foreground_selector.reset()
         self.background_selector.blocks = dict(enumerate(self.levels[level_id]['blocks_background'])).values()

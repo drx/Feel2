@@ -64,3 +64,40 @@ QTabBar::tab:last:selected {
 QTabBar::tab:only-one {
     margin: 0; /* if there is only one tab, we don't want overlapping margins */
 }
+
+QMenu {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                 stop: 0 #212121, stop: 0.4 #1d1d1d,
+                                 stop: 0.5 #181818, stop: 1.0 #131313);
+    border: 2px solid #242423;
+    border-bottom-color: #22272B; /* same as the pane color */
+ }
+
+QMenu::item {
+    background-color: transparent;
+}
+
+QMenu::item:selected { /* when user selects item using mouse or keyboard */
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #4a4a4a, stop: 0.4 #444444,
+                                stop: 0.5 #373737, stop: 1.0 #4a4a4a);
+}
+
+QMenuBar {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                 stop: 0 #212121, stop: 0.4 #1d1d1d,
+                                 stop: 0.5 #181818, stop: 1.0 #131313);
+}
+
+QMenuBar::item {
+    spacing: 3px; /* spacing between menu bar items */
+    padding: 1px 4px;
+    background: transparent;
+    border-radius: 4px;
+}
+
+QMenuBar::item:selected, QMenuBar::item:pressed { /* when selected using mouse or keyboard */
+   background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                               stop: 0 #4a4a4a, stop: 0.4 #444444,
+                               stop: 0.5 #373737, stop: 1.0 #4a4a4a);
+}

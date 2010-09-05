@@ -101,14 +101,12 @@ class ProgressBar(QtGui.QProgressBar):
 class Editor(QtGui.QWidget):
     def __init__(self):
         super(Editor, self).__init__()
-        self.resize(800, 600)
-        self.setWindowTitle("Feel2")
-
         self.createCanvas()
         self.createPane()
         self.progress_bar = ProgressBar()
         self.progress_bar.setVisible(False)
         layout = QtGui.QVBoxLayout()
+        layout.setMargin(0)
         layout.addWidget(self.canvas)
         layout.addWidget(self.pane)
         layout.addWidget(self.progress_bar)
