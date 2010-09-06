@@ -23,6 +23,7 @@ class Canvas(QtGui.QWidget):
         self.level_image = QtGui.QImage()
         self.camera = QtCore.QPoint(0, 0)
         self.delta = QtCore.QPoint(0, 0)
+        self.mouse_pos = QtCore.QPoint()
         self.pressed = False
         self.zoom = 1.0
 

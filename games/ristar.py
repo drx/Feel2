@@ -256,6 +256,9 @@ class RistarROM(ROM):
         '''Build 256x256 blocks'''
         for plane in ('foreground', 'background'):
             blocks_256 = []
+            block = QtGui.QImage(256, 256, QtGui.QImage.Format_ARGB32)
+            block.fill(0x00000000)
+            blocks_256.append(block)  # empty block
             for i in xrange(len(level['mappings_256_'+plane])/0x200):
                 block = QtGui.QImage(256, 256, QtGui.QImage.Format_ARGB32)
                 block.fill(0x00000000)
@@ -280,6 +283,10 @@ class Canvas(BaseCanvas):
         self.camera.setX(0)
         self.camera.setY(0)
 
+    @property
+    def editor(self):
+        return self.parent()
+
     def updateImage(self):
         super(Canvas, self).updateImage()
         from PyQt4 import QtGui, QtCore
@@ -291,7 +298,7 @@ class Canvas(BaseCanvas):
         blocks_foreground = self.parent().current_level['blocks_foreground']
         blocks_background = self.parent().current_level['blocks_background']
 
-        self.background_wrap = True
+        self.wrap_background = True
         self.block_size = 256
 
         self.max_camera = QtCore.QPoint(self.block_size*foreground['x'], self.block_size*foreground['y'])
@@ -314,6 +321,20 @@ class Canvas(BaseCanvas):
         y_start = (self.camera.y() >> 8)-1
         y_end = y_start + (int(self.height()/self.zoom) >> 8)+3
 
+        wrap_background = self.wrap_background
+        if self.editor.mode == 'levels':
+            draw_foreground = True
+            draw_background = True
+            plane = None
+        elif self.editor.mode == 'foreground':
+            draw_foreground = True
+            draw_background = False
+            plane = foreground
+        elif self.editor.mode == 'background':
+            draw_foreground = False
+            draw_background = True
+            wrap_background = False
+            plane = background
         
         if (self.camera.x()>>8) != (self.old_camera.x()>>8) or (self.camera.y()>>8) != (self.old_camera.y()>>8) or self.level_image.isNull():
             self.reload = True
@@ -326,21 +347,33 @@ class Canvas(BaseCanvas):
 
             for y in range(y_start, y_end):
                 for x in range(x_start, x_end):
-                    try:
-                        foreground_block_id = foreground['layout'][y][x]
-                    except IndexError:
-                        foreground_block_id = None
+                    if draw_background:
+                        if wrap_background:
+                            background_block_id = background['layout'][y%background['y']][x%background['x']]
+                        else:
+                            try:
+                                background_block_id = background['layout'][y][x]
+                            except IndexError:
+                                background_block_id = None
+                        if background_block_id:
+                            level_painter.drawImage((x-x_start)*self.block_size, (y-y_start)*self.block_size, blocks_background[background_block_id])
 
-                    background_block_id = background['layout'][y%background['y']][x%background['x']]
-                    if background_block_id:
-                        level_painter.drawImage((x-x_start)*self.block_size, (y-y_start)*self.block_size, blocks_background[background_block_id-1])
-                    if foreground_block_id:
+                    if draw_foreground:
                         try:
-                            level_painter.drawImage((x-x_start)*self.block_size, (y-y_start)*self.block_size, blocks_foreground[foreground_block_id-1])
+                            foreground_block_id = foreground['layout'][y][x]
                         except IndexError:
-                            pass
-                    if (x,y) == (2,2):
-                        hover_block = QtGui.QImage(blocks_foreground[12])
+                            foreground_block_id = None
+                        if foreground_block_id:
+                            try:
+                                level_painter.drawImage((x-x_start)*self.block_size, (y-y_start)*self.block_size, blocks_foreground[foreground_block_id])
+                            except IndexError:
+                                pass
+
+                    if self.editor.mode in ('background', 'foreground') and self.editor.pane_tab.selected_block is not None and (x,y) == self.mouse_layout_xy() and x < plane['x'] and y < plane['y']:
+                        if self.editor.mode == 'foreground':
+                            hover_block = QtGui.QImage(blocks_foreground[self.editor.pane_tab.selected_block])
+                        elif self.editor.mode == 'background':
+                            hover_block = QtGui.QImage(blocks_background[self.editor.pane_tab.selected_block])
                         image_set_alpha(hover_block, 0x80)
                         level_painter.drawImage((x-x_start)*self.block_size, (y-y_start)*self.block_size, hover_block)
                         
@@ -353,6 +386,8 @@ class Canvas(BaseCanvas):
         source_rect.setHeight(self.height()/self.zoom)
         painter.drawImage(self.rect(), self.level_image, source_rect)
 
+    def mouse_layout_xy(self):
+        return (((self.camera.x()+self.mouse_pos.x())>>8),((self.camera.y()+self.mouse_pos.y())>>8))
 
     def resizeEvent(self, event):
         self.reload = True
@@ -366,6 +401,15 @@ class Canvas(BaseCanvas):
     def mousePressEvent(self, event):
         self.pressed = True
         self.updateMouse(event)
+        if self.editor.mode in ('foreground', 'background') and self.editor.pane_tab.selected_block is not None:
+            if self.editor.mode == 'foreground':
+                plane = self.editor.current_level['foreground']
+            elif self.editor.mode == 'background':
+                plane = self.editor.current_level['background']
+            x, y = self.mouse_layout_xy()
+            if x < plane['x'] and y < plane['y']:
+                plane['layout'][y][x] = self.editor.pane_tab.selected_block
+                self.reload = True
 
     def mouseReleaseEvent(self, event):
         self.pressed = False
@@ -374,6 +418,7 @@ class Canvas(BaseCanvas):
     def leaveEvent(self, event):
         self.delta.setX(0)
         self.delta.setY(0)
+        self.mouse_pos = QtCore.QPoint()
 
     def wheelEvent(self, event):
         steps = event.delta() / (8*15)
@@ -394,6 +439,11 @@ class Canvas(BaseCanvas):
             if self.pressed:
                 speed *= 3
             return speed
+
+        self.old_mouse_pos = self.mouse_pos
+        self.mouse_pos = event.pos()
+        if ((self.old_mouse_pos+self.camera).x()>>8) != ((self.mouse_pos+self.camera).x()>>8) or ((self.old_mouse_pos+self.camera).y()>>8) != ((self.mouse_pos+self.camera).y()>>8):
+            self.reload = True
 
         if event.x() > self.width()-50:
             self.delta.setX(speed(self.width()-event.x()))
@@ -631,6 +681,7 @@ class Editor(BaseEditor):
 
     def createPane(self):
         self.pane = Pane()
+        self.pane.currentChanged.connect(self.set_mode)
 
     def keyPressEvent(self, event):
         if event.key() == QtCore.Qt.Key_L:
@@ -673,6 +724,12 @@ class Editor(BaseEditor):
 
         self.set_level(0)
 
+        self.modes = {
+            0: 'levels',
+            1: 'foreground',
+            2: 'background',
+        }
+        self.mode_id = 0
         self.pane.addTab(self.level_selector, 'Levels')
         self.pane.addTab(self.foreground_selector, 'Foreground')
         self.pane.addTab(self.background_selector, 'Background')
@@ -687,3 +744,12 @@ class Editor(BaseEditor):
         self.background_selector.reset()
         self.level_loaded = True
         self.canvas.reload = True
+
+    def set_mode(self, mode_id):
+        self.pane_tab = self.pane.currentWidget()
+        self.mode_id = mode_id
+        self.canvas.reload = True
+
+    @property
+    def mode(self):
+        return self.modes[self.mode_id]
