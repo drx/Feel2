@@ -257,7 +257,7 @@ class RistarROM(ROM):
         for plane in ('foreground', 'background'):
             blocks_256 = []
             block = QtGui.QImage(256, 256, QtGui.QImage.Format_ARGB32)
-            block.fill(0x00000000)
+            block.fill(0xff000000)
             blocks_256.append(block)  # empty block
             for i in xrange(len(level['mappings_256_'+plane])/0x200):
                 block = QtGui.QImage(256, 256, QtGui.QImage.Format_ARGB32)
@@ -369,15 +369,13 @@ class Canvas(BaseCanvas):
                             except IndexError:
                                 pass
 
-                    if self.editor.mode in ('background', 'foreground') and self.editor.pane_tab.selected_block is not None and (x,y) == self.mouse_layout_xy() and x < plane['x'] and y < plane['y']:
+                    if not self.delta and self.editor.mode in ('background', 'foreground') and self.editor.pane_tab.selected_block is not None and (x,y) == self.mouse_layout_xy() and x < plane['x'] and y < plane['y']:
                         if self.editor.mode == 'foreground':
                             hover_block = QtGui.QImage(blocks_foreground[self.editor.pane_tab.selected_block])
                         elif self.editor.mode == 'background':
                             hover_block = QtGui.QImage(blocks_background[self.editor.pane_tab.selected_block])
                         image_set_alpha(hover_block, 0x80)
                         level_painter.drawImage((x-x_start)*self.block_size, (y-y_start)*self.block_size, hover_block)
-                        
-        
 
         source_rect = self.level_image.rect()
         source_rect.setX((self.camera.x()&0xff)+self.block_size)
@@ -387,7 +385,7 @@ class Canvas(BaseCanvas):
         painter.drawImage(self.rect(), self.level_image, source_rect)
 
     def mouse_layout_xy(self):
-        return (((self.camera.x()+self.mouse_pos.x())>>8),((self.camera.y()+self.mouse_pos.y())>>8))
+        return ((int(self.camera.x()+self.mouse_pos.x()/self.zoom)>>8),(int(self.camera.y()+self.mouse_pos.y()/self.zoom)>>8))
 
     def resizeEvent(self, event):
         self.reload = True
@@ -401,7 +399,7 @@ class Canvas(BaseCanvas):
     def mousePressEvent(self, event):
         self.pressed = True
         self.updateMouse(event)
-        if self.editor.mode in ('foreground', 'background') and self.editor.pane_tab.selected_block is not None:
+        if not self.delta and self.editor.mode in ('foreground', 'background') and self.editor.pane_tab.selected_block is not None:
             if self.editor.mode == 'foreground':
                 plane = self.editor.current_level['foreground']
             elif self.editor.mode == 'background':
@@ -427,8 +425,8 @@ class Canvas(BaseCanvas):
 
     def zoomBy(self, steps):
         self.zoom += (0.1*steps)*self.zoom
-        if self.zoom < 0.1:
-            self.zoom = 0.1
+        if self.zoom < 0.15:
+            self.zoom = 0.15
         if self.zoom > 10:
             self.zoom = 10
         self.reload = True
@@ -442,8 +440,6 @@ class Canvas(BaseCanvas):
 
         self.old_mouse_pos = self.mouse_pos
         self.mouse_pos = event.pos()
-        if ((self.old_mouse_pos+self.camera).x()>>8) != ((self.mouse_pos+self.camera).x()>>8) or ((self.old_mouse_pos+self.camera).y()>>8) != ((self.mouse_pos+self.camera).y()>>8):
-            self.reload = True
 
         if event.x() > self.width()-50:
             self.delta.setX(speed(self.width()-event.x()))
@@ -458,6 +454,9 @@ class Canvas(BaseCanvas):
             self.delta.setY(-speed(event.y()))
         else:
             self.delta.setY(0)
+
+        if not self.delta and ((self.old_mouse_pos/self.zoom+self.camera).x()>>8) != ((self.mouse_pos/self.zoom+self.camera).x()>>8) or ((self.old_mouse_pos/self.zoom+self.camera).y()>>8) != ((self.mouse_pos/self.zoom+self.camera).y()>>8):
+            self.reload = True
 
 
     def startMoving(self):
