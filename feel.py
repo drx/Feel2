@@ -2,6 +2,7 @@
 import sys
 from PyQt4 import QtGui, QtCore
 from editor import Editor
+from games import ROMs
 
 
 class Window(QtGui.QMainWindow):
@@ -18,22 +19,35 @@ class Window(QtGui.QMainWindow):
         self.menus = {}
         self.menus['project'] = self.menuBar().addMenu('&Project')
         self.menus['project'].addAction(QtGui.QAction("&Load project", self, triggered=self.load_project))
+        self.menus['load_rom'] = self.menus['project'].addMenu('Load &ROM')
+        for rom in ROMs:
+            self.menus['load_rom'].addAction(QtGui.QAction(rom['name'], self, triggered=self.load_rom(rom['class'])))
         self.menus['help'] = self.menuBar().addMenu('&Help')
         self.menus['help'].addAction(QtGui.QAction("&About Feel2", self, triggered=self.about))
 
     def load_project(self):
         file_dialog = QtGui.QFileDialog()
         file_dialog.setFileMode(QtGui.QFileDialog.ExistingFile)
-        file_dialog.setNameFilters(["Feel projects (*.fap)", "ROMs (*.*)"])
+        file_dialog.setNameFilter("Feel projects (*.fap)")
         file_dialog.restoreState(self.settings.value("loadproject/state").toByteArray())
         file_dialog.exec_()
-        selected_filter = file_dialog.selectedNameFilter()
-        if selected_filter.startsWith('ROMs'):
+        for filename in file_dialog.selectedFiles():
+            self.editor.load_fap(filename)
+        self.settings.setValue("loadproject/state", file_dialog.saveState())
+
+    def load_rom(self, rom_class):
+        def do():
+            file_dialog = QtGui.QFileDialog()
+            file_dialog.setFileMode(QtGui.QFileDialog.ExistingFile)
+            file_dialog.setNameFilter("ROMs (*.*)")
+            file_dialog.restoreState(self.settings.value("loadrom/state").toByteArray())
+            file_dialog.exec_()
+            selected_filename = None
             for filename in file_dialog.selectedFiles():
-                self.editor.load_rom(filename)
-        if selected_filter.startsWith('Feel projects'):
-            print 'Not implemented'
-        self.settings.setValue("loadproject/state", self.saveState())
+                selected_filename = filename
+            self.settings.setValue("loadrom/state", file_dialog.saveState())
+            self.editor.load_rom(rom_class, selected_filename)
+        return do
 
     def about(self):
         pass

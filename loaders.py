@@ -258,9 +258,10 @@ class Project(object):
 
 
 class ROM(Project):
+    def __init__(self, filename):
+        self.filename = filename
+
     def load(self):
-        #self.filename = open_ROM()
-        self.filename = 'roms/Ristar - The Shooting Star (J) [!].bin'
         f = open(self.filename, "rb")
         self.data = Data(f.read())
         f.close()
@@ -376,17 +377,3 @@ def build_blocks_256(level):
             blocks_256.append(block)
         level['blocks_'+plane] = blocks_256
     return level
-
-
-def open_ROM():
-    settings = QtCore.QSettings("Feel2", "Feel2")
-    file_dialog = QtGui.QFileDialog()
-    file_dialog.setFileMode(QtGui.QFileDialog.ExistingFile)
-    file_dialog.setNameFilter("ROMs (*.*)")
-    file_dialog.restoreState(settings.value("openrom/state").toByteArray())
-    file_dialog.exec_()
-    selected_filename = None
-    for filename in file_dialog.selectedFiles():
-        selected_filename = filename
-    settings.setValue("openrom/state", self.saveState())
-    return selected_filename

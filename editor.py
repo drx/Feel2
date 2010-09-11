@@ -436,7 +436,7 @@ class ProjectLoader(QtCore.QThread):
         thumbnails = {}
         i = 0
         for level_id in self.project.levels:
-            if level_id > 0x204:
+            if level_id > 1:
                 continue
             try:
                 self.project.load_level(level_id)
@@ -496,7 +496,8 @@ class Editor(QtGui.QWidget):
 
     def keyPressEvent(self, event):
         if event.key() == QtCore.Qt.Key_L:
-            self.load_rom()
+            from games.ristar import RistarROM
+            self.load_rom(RistarROM, 'roms/Ristar - The Shooting Star (J) [!].bin')
         elif event.key() == QtCore.Qt.Key_0:
             self.canvas.zoom = 1.0
             self.canvas.reload = True
@@ -507,15 +508,13 @@ class Editor(QtGui.QWidget):
             event.ignore()
             super(Editor, self).keyPressEvent(event)
 
-    def load_rom(self):
-        from games.ristar import RistarROM
-        self.project_loader = ProjectLoader(RistarROM())
+    def load_rom(self, project_class, filename):
+        self.project_loader = ProjectLoader(project_class(filename))
         self.project_loader.started.connect(self.started)
         self.project_loader.progress.connect(self.progress)
         self.project_loader.loaded.connect(self.loaded)
         self.project_loader.start(QtCore.QThread.IdlePriority)
     
-
     def started(self, steps):
         self.progress_bar.setVisible(True)
         self.progress_bar.setMaximum(steps)
