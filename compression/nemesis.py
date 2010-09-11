@@ -1,16 +1,18 @@
 import struct
+from array import array
 from compression.exceptions import *
 
 def decompress(compressed):
     pointer = {'value': 0}
+    compressed_array = array('B', compressed)
 
     def get_next_byte():
-        val = ord(str(compressed)[pointer['value']])
+        val = compressed_array[pointer['value']]
         pointer['value'] += 1
         return val
 
     def get_next_word():        
-        val = struct.unpack('>H', compressed[pointer['value']:pointer['value']+2])[0]
+        val = (compressed_array[pointer['value']]<<8) + compressed_array[pointer['value']+1]
         pointer['value'] += 2
         return val
 

@@ -3,10 +3,7 @@ from PyQt4 import QtGui, QtCore
 
 def image_entropy(image):
     import zlib, base64
-    buf = QtCore.QBuffer()
-    buf.open(QtCore.QBuffer.ReadWrite)
-    image.save(buf, 'PNG')
-    data = base64.b64decode(buf.buffer().toBase64())
+    data = image.bits().asstring(image.numBytes())
     return len(zlib.compress(data))
 
 
@@ -167,6 +164,8 @@ class Canvas(QtGui.QWidget):
 
             for y in range(y_start, y_end):
                 for x in range(x_start, x_end):
+                    if x > foreground['x'] or y > foreground['y']:
+                        continue
                     if draw_background:
                         if wrap_background:
                             background_block_id = background['layout'][y%background['y']][x%background['x']]
@@ -429,17 +428,21 @@ class ProjectLoader(QtCore.QThread):
     def run_(self):
         self.project.load()
 
-        self.started.emit(len(self.project.levels))
+        n_steps = sum(map(len, self.project.levels.values()))
+        self.started.emit(n_steps)
         self.progress.emit(0)
 
         levels = {}
         thumbnails = {}
         i = 0
         for level_id in self.project.levels:
-            if level_id > 1:
+            if level_id > 0x100:
                 continue
             try:
-                self.project.load_level(level_id)
+                for attr in self.project.levels[level_id]:
+                    self.project.levels[level_id][attr].load()
+                    i += 1
+                    self.progress.emit(i)
                 for level_processor in self.project.level_processors:
                     self.project.levels[level_id] = level_processor(self.project.levels[level_id])
             except str as e:
@@ -449,8 +452,6 @@ class ProjectLoader(QtCore.QThread):
             blocks_entropy = map(image_entropy, self.project.levels[level_id]['blocks_foreground'])
             thumbnails[level_id] = blocks_entropy.index(max(blocks_entropy))
 
-            i += 1
-            self.progress.emit(i)
 
         levels = self.project.levels
         self.loaded.emit(levels, thumbnails, self.project)
@@ -509,11 +510,18 @@ class Editor(QtGui.QWidget):
             super(Editor, self).keyPressEvent(event)
 
     def load_rom(self, project_class, filename):
-        self.project_loader = ProjectLoader(project_class(filename))
-        self.project_loader.started.connect(self.started)
-        self.project_loader.progress.connect(self.progress)
-        self.project_loader.loaded.connect(self.loaded)
-        self.project_loader.start(QtCore.QThread.IdlePriority)
+        import os.path, pickle
+        self.filename = filename
+        if os.path.exists(filename+'.cache') and False:
+            pkl_file = open(self.filename+'.cache', 'rb')
+            cached_project = pickle.load(pkl_file)
+            self.loaded(self, cached_project['levels'], cached_project['thumbnails'], cached_project['project'])
+        else:
+            self.project_loader = ProjectLoader(project_class(filename))
+            self.project_loader.started.connect(self.started)
+            self.project_loader.progress.connect(self.progress)
+            self.project_loader.loaded.connect(self.loaded)
+            self.project_loader.start(QtCore.QThread.IdlePriority)
     
     def started(self, steps):
         self.progress_bar.setVisible(True)
@@ -542,6 +550,7 @@ class Editor(QtGui.QWidget):
         self.pane.addTab(self.level_selector, 'Levels')
         self.pane.addTab(self.foreground_selector, 'Foreground')
         self.pane.addTab(self.background_selector, 'Background')
+        self.save_cache()
 
     def set_level(self, level_id):
         self.current_level = self.levels[level_id]
@@ -558,6 +567,13 @@ class Editor(QtGui.QWidget):
         self.pane_tab = self.pane.currentWidget()
         self.mode_id = mode_id
         self.canvas.reload = True
+
+    def save_cache(self):
+        return
+        import pickle
+        cached_project = {'levels': self.levels, 'thumbnails': self.thumbnails, 'project': self.project}
+        pkl_file = open(self.filename+'.cache', 'wb')
+        pickle.dump(cached_project, pkl_file)
 
     @property
     def mode(self):
