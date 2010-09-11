@@ -80,17 +80,26 @@ class RistarROM(ROM):
                 collisionset_id = level_id
             background_offset = DataArray(data, pointers['mappings_16_background_offset'], tileset_id, alignment=2, length=2).load()
             level = {
-                'palette': MDPalette(RelativePointerArray(data, pointers['palettes'], level_id, length=0x80)),
                 'mappings_256_foreground': StarCompressed(PointerArray(data, pointers['mappings_256_foreground'], level_id)),
                 'mappings_256_background': StarCompressed(PointerArray(data, pointers['mappings_256_background'], level_id)),
                 'mappings_16_foreground': StarCompressed(PointerArray(data, pointers['mappings_16_foreground'], tileset_id, alignment=8)),
                 'mappings_16_background': ShiftedBy(StarCompressed(PointerArray(data, pointers['mappings_16_background'], tileset_id, alignment=8)), shift=background_offset, alignment=2),
-                'objects': StarCompressed(RelativePointerArray(data, pointers['objects'], level_id, shift=2)),
-                'level_collisions': StarCompressed(RelativePointerArray(data, pointers['level_collisions'], level_id)),
+                'objects': StarCompressed(RelativePointerArray(data, pointers['objects'], objectset_id, shift=2)),
+                'level_collisions': StarCompressed(RelativePointerArray(data, pointers['level_collisions'], collisionset_id)),
                 'collision_array': DataSlice(data, pointers['collision_array'], 0x3c0),
                 'foreground': LevelLayout(PointerArray(data, pointers['layout_foreground'], level_id)),
                 'background': LevelLayout(PointerArray(data, pointers['layout_background'], level_id)),
             }
+
+            if level_id < 0x15:
+                level['palette'] = MDPalette(RelativePointerArray(data, pointers['palettes'], level_id, length=0x80))
+            else:
+                # treasure palettes
+                level['palette'] = MDPalette(
+                    PointerArray(data, pointers['treasure_palettes_level'], level_id-0x24, length=0x40)
+                     + StaticData('\0'*0x20)
+                     + DataSlice(data, pointers['treasure_palette_main'], 0x20)
+                    )
 
             if tileset_id in (0, 1):
                 foreground_tiles = StarCompressed(DataSlice(data, pointers['flora_hack'], 0x10000))
@@ -106,24 +115,6 @@ class RistarROM(ROM):
                 background_tiles = StarCompressed(PointerArray(data, pointers['tiles_background'], tileset_id))
            
             level['tiles'] = foreground_tiles + background_tiles 
-
-            """
-            foreground_tile_data = load(pointer_array('tiles_foreground', tileset_id))
-            background_tile_data = load(pointer_array('tiles_background', tileset_id))
-            if tileset_id in (0, 1):
-                foreground_tiles = star.decompress(load(pointers['flora_hack'])) + star.decompress(foreground_tile_data)
-                if tileset_id == 0:
-                    foreground_tiles = '\0'*0x40+foreground_tiles
-                background_tiles = nemesis.decompress(background_tile_data)
-            elif tileset_id == 0x15:
-                foreground_tiles = star.decompress(foreground_tile_data)
-                background_tiles = star.decompress(background_tile_data)
-            else:
-                foreground_tiles = nemesis.decompress(foreground_tile_data)
-                background_tiles = nemesis.decompress(background_tile_data)
-            """
-
-            #level['tiles'] = foreground_tiles.ljust(background_offset*0x20, '\0') + background_tiles
 
             levels[level_id] = level
         return levels
@@ -141,140 +132,3 @@ class RistarROM(ROM):
             self.rom_version = 'us_sep'
         else:
             raise self.UnrecognizedROM()
-
-    def old_load_level(self, level_id):
-        pointers = self.pointers[self.rom_version]
-        level = {}
-        
-        if level_id >= 0x24:
-            tileset_id = 0x15
-            objectset_id = level_id+4
-            collisionset_id = 0x29
-        else:
-            tileset_id = level_id
-            objectset_id = level_id
-            collisionset_id = level_id
-
-
-        def load(address, length=None):
-            if length is None:
-                return self.data[address:]
-            else:
-                return self.data[address:address+length]
-
-        def pointer_array(key, index, alignment=4):
-            return self.data.dword(pointers[key]+index*alignment)
-
-        def pointer_relative_array(key, index, alignment=2):
-            return pointers[key] + self.data.word(pointers[key]+index*2)
-
-        background_offset = self.data.word(pointers['mappings_16_background_offset']+tileset_id*2)
-
-        foreground_tile_data = load(pointer_array('tiles_foreground', tileset_id))
-        background_tile_data = load(pointer_array('tiles_background', tileset_id))
-        if tileset_id in (0, 1):
-            foreground_tiles = star.decompress(load(pointers['flora_hack'])) + star.decompress(foreground_tile_data)
-            if tileset_id == 0:
-                foreground_tiles = '\0'*0x40+foreground_tiles
-            background_tiles = nemesis.decompress(background_tile_data)
-        elif tileset_id == 0x15:
-            foreground_tiles = star.decompress(foreground_tile_data)
-            background_tiles = star.decompress(background_tile_data)
-        else:
-            foreground_tiles = nemesis.decompress(foreground_tile_data)
-            background_tiles = nemesis.decompress(background_tile_data)
-
-        level['tiles'] = foreground_tiles.ljust(background_offset*0x20, '\0') + background_tiles
-
-        level['mappings_256_foreground'] = Data(star.decompress(load(pointer_array('mappings_256_foreground', level_id))))
-        level['mappings_256_background'] = Data(star.decompress(load(pointer_array('mappings_256_background', level_id))))
-        level['mappings_16_foreground'] = Data(star.decompress(load(pointer_array('mappings_16_foreground', tileset_id, alignment=8))))
-        mappings_16_background = Data(star.decompress(load(pointer_array('mappings_16_background', tileset_id, alignment=8))))
-        level['mappings_16_background'] = Data(''.join(map(lambda x: struct.pack('>H',x+background_offset), [mappings_16_background.word(i*2) for i in xrange(len(mappings_16_background)/2)])))
-        try:
-            level['objects'] = Data(star.decompress(load(pointer_relative_array('objects', objectset_id)+2)))
-        except:
-            pass
-        level['level_collisions'] = Data(star.decompress(load(pointer_relative_array('level_collisions', objectset_id))))
-        level['collision_array'] = load(pointers['collision_array'], 0x3c0)
-
-        if level_id < 0x15:
-            md_palette = load(pointer_relative_array('palettes', level_id), 0x80)
-        else:
-            md_palette = load(pointer_array('treasure_palettes_level', level_id-0x24, 0x20)) + '\0'*0x20 + load(pointers['treasure_palette_main'], 0x20)
-
-        level['palette'] = RistarROM.palette_md_to_rgb(md_palette)
-
-        def load_layout(address):
-            x, y = self.data[address]+1, self.data[address+1]+1
-            address += 2
-       
-            layout = []
-            for cur_y in xrange(y):
-                layout_line = []
-                for cur_x in xrange(x):
-                    layout_line.append(self.data[address])
-                    address += 1
-                layout.append(layout_line)
-
-            return {'x': x, 'y': y, 'layout': layout}
-
-        level['foreground'] = load_layout(pointer_array('layout_foreground', level_id))
-        level['background'] = load_layout(pointer_array('layout_background', level_id))
-
-        '''Build 16x16 blocks'''
-        for plane in ('foreground', 'background'):
-            blocks_16 = []
-            for i in xrange(len(level['mappings_16_'+plane])/8):
-                block = QtGui.QImage(16, 16, QtGui.QImage.Format_ARGB32)
-                block.fill(0xff000000)
-                for x in range(2):
-                    for y in range(2):
-                        flags, tile_id = divmod(level['mappings_16_'+plane].word(i*8+y*4+x*2), 0x800)
-                        flip_x, flip_y = flags & 0x1, flags & 0x2
-                        palette_line = (flags & 0xc) >> 2
-
-                        tile_data = level['tiles'][tile_id*0x20:(tile_id+1)*0x20]
-                        tile_i = 0
-                        for tile_byte in tile_data:
-                            tile_y, tile_x = divmod(tile_i, 8)
-                            tile_byte = ord(tile_byte)
-                            for k in (0, 1):
-                                tyle_byte, palette_cell = divmod(tile_byte, 0x10)
-                                color = level['palette'][palette_line*0x10+palette_cell]
-                                set_x, set_y = tile_x+k, tile_y
-                                if flip_x:
-                                    set_x = 7-set_x
-                                if flip_y:
-                                    set_y = 7-set_y
-                                block.setPixel(x*8+set_x, y*8+set_y, color)
-                            tile_i += 2
-
-                blocks_16.append(block)
-            level['blocks_16_'+plane] = blocks_16
-
-        '''Build 256x256 blocks'''
-        for plane in ('foreground', 'background'):
-            blocks_256 = []
-            block = QtGui.QImage(256, 256, QtGui.QImage.Format_ARGB32)
-            block.fill(0xff000000)
-            blocks_256.append(block)  # empty block
-            for i in xrange(len(level['mappings_256_'+plane])/0x200):
-                block = QtGui.QImage(256, 256, QtGui.QImage.Format_ARGB32)
-                block.fill(0x00000000)
-                painter = QtGui.QPainter(block)
-                for x in range(16):
-                    for y in range(16):
-                        flags, block_16_id = divmod(level['mappings_256_'+plane].word(i*0x200+y*0x20+x*2), 0x200)
-                        flip_x, flip_y = bool(flags & 0x2), bool(flags & 0x4)
-                        try:
-                            painter.drawImage(x*16, y*16, level['blocks_16_'+plane][block_16_id].mirrored(horizontal = flip_x, vertical = flip_y))
-                        except IndexError:
-                            pass
-
-                blocks_256.append(block)
-            level['blocks_'+plane] = blocks_256
-
-        return level
-
-
