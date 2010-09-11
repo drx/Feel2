@@ -224,10 +224,15 @@ class ShiftedBy(Loader):
     def load(self):
         input_data = self.subloader.load()
         from array import array
-        self.data = Data(array(self.typecode, map(lambda x: x+self.shift, array(self.typecode, input_data))).tostring())
+        a = array(self.typecode, input_data)
+        a.byteswap()
+        a = array(self.typecode, map(lambda x: x+self.shift, a))
+        a.byteswap()
+        self.data = Data(a.tostring())
         return self.data
 
     def save(self):
+        raise Exception('This is broken.')
         self.subloader.data = Data(array(self.typecode, map(lambda x: x-self.shift, array(self.typecode, self.data))).tostring())
         self.subloader.save()
 

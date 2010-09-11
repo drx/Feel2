@@ -5,7 +5,7 @@ def decompress(compressed):
     pointer = {'value': 0}
 
     def get_next_byte():
-        val = compressed[pointer['value']]
+        val = ord(str(compressed)[pointer['value']])
         pointer['value'] += 1
         return val
 

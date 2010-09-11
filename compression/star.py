@@ -1,18 +1,20 @@
 import struct
+from array import array
 from compression.exceptions import *
 
 def decompress(compressed):
     input_ptr = {'value': 0}
     bit_count = {'value': 8}
+    compressed_array = array('B', compressed)
     uncompressed = []
 
     def get_byte():
-        val = compressed[input_ptr['value']]
+        val = compressed_array[input_ptr['value']]
         input_ptr['value'] += 1
         return val
 
     def get_word():        
-        val = struct.unpack('>H', compressed[input_ptr['value']:input_ptr['value']+2])[0]
+        val = (compressed_array[input_ptr['value']]<<8) + compressed_array[input_ptr['value']+1]
         input_ptr['value'] += 2
         return val
 

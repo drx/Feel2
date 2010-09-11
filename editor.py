@@ -420,14 +420,13 @@ class ProgressBar(QtGui.QProgressBar):
 class ProjectLoader(QtCore.QThread):
     started = QtCore.pyqtSignal(int)
     progress = QtCore.pyqtSignal(int)
-    from loaders import Project
-    loaded = QtCore.pyqtSignal(object, object, Project)
+    loaded = QtCore.pyqtSignal(object, object, object)
 
     def __init__(self, project):
         super(ProjectLoader, self).__init__()
         self.project = project
 
-    def run(self):
+    def run_(self):
         self.project.load()
 
         self.started.emit(len(self.project.levels))
@@ -437,7 +436,7 @@ class ProjectLoader(QtCore.QThread):
         thumbnails = {}
         i = 0
         for level_id in self.project.levels:
-            if level_id > 1:
+            if level_id > 3:
                 break
             try:
                 self.project.load_level(level_id)
@@ -455,6 +454,19 @@ class ProjectLoader(QtCore.QThread):
 
         levels = self.project.levels
         self.loaded.emit(levels, thumbnails, self.project)
+
+    def run(self):
+        import os
+        if 'FEEL2_PROFILE_THREADS' in os.environ:
+            import cProfile, pstats
+            profiler = cProfile.Profile()
+            try:
+                return profiler.runcall(self.run_)
+            finally:
+                profiler.dump_stats(os.environ['FEEL2_PROFILE_THREADS'])
+                pstats.Stats(os.environ['FEEL2_PROFILE_THREADS']).sort_stats('time').print_stats()
+        else:
+            self.run_()
 
 
 class Editor(QtGui.QWidget):
