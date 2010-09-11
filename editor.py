@@ -436,8 +436,8 @@ class ProjectLoader(QtCore.QThread):
         thumbnails = {}
         i = 0
         for level_id in self.project.levels:
-            if level_id > 3:
-                break
+            if level_id > 0x204:
+                continue
             try:
                 self.project.load_level(level_id)
                 for level_processor in self.project.level_processors:
@@ -533,8 +533,6 @@ class Editor(QtGui.QWidget):
         self.level_selector.selected.connect(self.set_level)
         self.foreground_selector = BlockSelector({})
         self.background_selector = BlockSelector({})
-
-        self.set_level(0)
 
         self.modes = {
             0: 'levels',

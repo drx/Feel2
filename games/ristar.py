@@ -81,14 +81,14 @@ class RistarROM(ROM):
             background_offset = DataArray(data, pointers['mappings_16_background_offset'], tileset_id, alignment=2, length=2).load()
             level = {
                 'mappings_256_foreground': StarCompressed(PointerArray(data, pointers['mappings_256_foreground'], level_id)),
-                'mappings_256_background': StarCompressed(PointerArray(data, pointers['mappings_256_background'], level_id)),
+                'mappings_256_background': StarCompressed(PointerArray(data, pointers['mappings_256_background'], tileset_id)),
                 'mappings_16_foreground': StarCompressed(PointerArray(data, pointers['mappings_16_foreground'], tileset_id, alignment=8)),
                 'mappings_16_background': ShiftedBy(StarCompressed(PointerArray(data, pointers['mappings_16_background'], tileset_id, alignment=8)), shift=background_offset, alignment=2),
                 'objects': StarCompressed(RelativePointerArray(data, pointers['objects'], objectset_id, shift=2)),
                 'level_collisions': StarCompressed(RelativePointerArray(data, pointers['level_collisions'], collisionset_id)),
                 'collision_array': DataSlice(data, pointers['collision_array'], 0x3c0),
                 'foreground': LevelLayout(PointerArray(data, pointers['layout_foreground'], level_id)),
-                'background': LevelLayout(PointerArray(data, pointers['layout_background'], level_id)),
+                'background': LevelLayout(PointerArray(data, pointers['layout_background'], tileset_id)),
             }
 
             if level_id < 0x15:
@@ -96,7 +96,7 @@ class RistarROM(ROM):
             else:
                 # treasure palettes
                 level['palette'] = MDPalette(
-                    PointerArray(data, pointers['treasure_palettes_level'], level_id-0x24, length=0x40)
+                    DataSlice(data, pointers['treasure_palettes_level']+0x40*((level_id-0x24)>>1), 0x40)
                      + StaticData('\0'*0x20)
                      + DataSlice(data, pointers['treasure_palette_main'], 0x20)
                     )
