@@ -7,7 +7,7 @@ def decompress(compressed):
     def get_next_byte():
         val = compressed[pointer['value']]
         pointer['value'] += 1
-        return ord(val)
+        return val
 
     def get_next_word():        
         val = struct.unpack('>H', compressed[pointer['value']:pointer['value']+2])[0]

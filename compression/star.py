@@ -9,7 +9,7 @@ def decompress(compressed):
     def get_byte():
         val = compressed[input_ptr['value']]
         input_ptr['value'] += 1
-        return ord(val)
+        return val
 
     def get_word():        
         val = struct.unpack('>H', compressed[input_ptr['value']:input_ptr['value']+2])[0]
@@ -69,7 +69,11 @@ def decompress(compressed):
 
         output_repeat_addr = len(uncompressed)-repeat_offset
         for i in xrange(raw_copy_count+1):
-            uncompressed.append(uncompressed[output_repeat_addr])
+            try:
+                byte = uncompressed[output_repeat_addr]
+            except IndexError:
+                byte = 0
+            uncompressed.append(byte)
             output_repeat_addr += 1
         
     return ''.join(map(lambda x: struct.pack('>B', x), uncompressed))

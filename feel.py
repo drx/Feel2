@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import sys
 from PyQt4 import QtGui, QtCore
-from games.ristar import Editor
+from editor import Editor
 
 
 class Window(QtGui.QMainWindow):

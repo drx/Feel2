@@ -1,74 +1,6 @@
 from editor import Pane as BasePane, Canvas as BaseCanvas, Editor as BaseEditor, LevelSelector as BaseLevelSelector
-from compression import nemesis, star
 from PyQt4 import QtGui, QtCore
-
-import struct  # for Data
-
-
-def image_entropy(image):
-    import zlib, base64
-    buf = QtCore.QBuffer()
-    buf.open(QtCore.QBuffer.ReadWrite)
-    image.save(buf, 'PNG')
-    data = base64.b64decode(buf.buffer().toBase64())
-    return len(zlib.compress(data))
-
-
-def image_set_alpha(image, alpha_value):
-    alpha = QtGui.QImage(image.width(), image.height(), QtGui.QImage.Format_RGB32)
-    alpha.fill((alpha_value<<16)+(alpha_value<<8)+alpha_value)
-    image.setAlphaChannel(alpha)
-
-
-class Data(str):
-    #def __new__(cls, value, *args, **kwargs):
-    #    return str.__new__(cls, value)
-#
-    #def __init__(self, value):
-
-    def byte(self, addr):
-        return struct.unpack('>B', str(self)[addr])[0]
-
-    def word(self, addr):
-        return struct.unpack('>H', self[addr:addr+2])[0]
-
-    def dword(self, addr):
-        return struct.unpack('>I', self[addr:addr+4])[0]
-
-    def __getitem__(self, key):
-        if type(key) == slice:
-            return Data(str.__getitem__(key))
-        else:
-            return self.byte(key)
-
-
-class Project(object):
-    pass
-
-
-class ROM(Project):
-    def __init__(self):
-        self.loaded = False
-
-    def load(self, filename):
-        f = open(filename, "rb")
-        self.data = Data(f.read())
-        self.loaded = True
-
-    @staticmethod
-    def palette_md_to_rgb(md_palette):
-        palette = []
-        for i in xrange(len(md_palette)/2):
-            md_color = Data(md_palette).word(i*2)
-            r, g, b = (md_color&0xe), (md_color&0xe0)>>4, (md_color&0xe00) >> 8
-            rgb_color = (r << 20) + (g << 12) + (b << 4)
-            if i % 16 != 0:
-                rgb_color += 0xff000000
-            palette.append(rgb_color)
-        return palette
-
-    class UnrecognizedROM(Exception):
-        pass
+from loaders import *
 
 
 class RistarROM(ROM):
@@ -92,7 +24,7 @@ class RistarROM(ROM):
             'collision_array': 0x1e97a,
         },
     }
-    levels = {
+    level_names = {
         0x00: "00: Flora (1-1)",
         0x01: "01: Flora (1-2)",
         0x02: "02: Flora (1-3)",
@@ -128,8 +60,76 @@ class RistarROM(ROM):
         0x2f: "2f: Treasure level (6-2)",
     }
 
-    def load(self, filename):
-        super(RistarROM, self).load(filename)
+    level_processors = [
+        build_blocks_16,
+        build_blocks_256,
+    ]
+
+    def get_levels(self):
+        pointers = self.pointers[self.rom_version]
+        data = self.data
+        levels = {}
+        for level_id in self.level_names:
+            if level_id >= 0x24:
+                tileset_id = 0x15
+                objectset_id = level_id+4
+                collisionset_id = 0x29
+            else:
+                tileset_id = level_id
+                objectset_id = level_id
+                collisionset_id = level_id
+            background_offset = DataArray(data, pointers['mappings_16_background_offset'], tileset_id, alignment=2, length=2).load()
+            level = {
+                'palette': MDPalette(RelativePointerArray(data, pointers['palettes'], level_id, length=0x80)),
+                'mappings_256_foreground': StarCompressed(PointerArray(data, pointers['mappings_256_foreground'], level_id)),
+                'mappings_256_background': StarCompressed(PointerArray(data, pointers['mappings_256_background'], level_id)),
+                'mappings_16_foreground': StarCompressed(PointerArray(data, pointers['mappings_16_foreground'], tileset_id, alignment=8)),
+                'mappings_16_background': ShiftedBy(StarCompressed(PointerArray(data, pointers['mappings_16_background'], tileset_id, alignment=8)), shift=background_offset, alignment=2),
+                'objects': StarCompressed(RelativePointerArray(data, pointers['objects'], level_id, shift=2)),
+                'level_collisions': StarCompressed(RelativePointerArray(data, pointers['level_collisions'], level_id)),
+                'collision_array': DataSlice(data, pointers['collision_array'], 0x3c0),
+                'foreground': LevelLayout(PointerArray(data, pointers['layout_foreground'], level_id)),
+                'background': LevelLayout(PointerArray(data, pointers['layout_background'], level_id)),
+            }
+
+            if tileset_id in (0, 1):
+                foreground_tiles = StarCompressed(DataSlice(data, pointers['flora_hack'], 0x10000))
+                foreground_tiles += StarCompressed(PointerArray(data, pointers['tiles_foreground'], tileset_id))
+                background_tiles = NemesisCompressed(PointerArray(data, pointers['tiles_background'], tileset_id))
+                if tileset_id == 0:
+                    foreground_tiles = StaticData('\0'*0x40)+foreground_tiles
+            elif 1 < tileset_id < 0x15:
+                foreground_tiles = NemesisCompressed(PointerArray(data, pointers['tiles_foreground'], tileset_id))
+                background_tiles = NemesisCompressed(PointerArray(data, pointers['tiles_background'], tileset_id))
+            else:
+                foreground_tiles = StarCompressed(PointerArray(data, pointers['tiles_foreground'], tileset_id))
+                background_tiles = StarCompressed(PointerArray(data, pointers['tiles_background'], tileset_id))
+           
+            level['tiles'] = foreground_tiles + background_tiles 
+
+            """
+            foreground_tile_data = load(pointer_array('tiles_foreground', tileset_id))
+            background_tile_data = load(pointer_array('tiles_background', tileset_id))
+            if tileset_id in (0, 1):
+                foreground_tiles = star.decompress(load(pointers['flora_hack'])) + star.decompress(foreground_tile_data)
+                if tileset_id == 0:
+                    foreground_tiles = '\0'*0x40+foreground_tiles
+                background_tiles = nemesis.decompress(background_tile_data)
+            elif tileset_id == 0x15:
+                foreground_tiles = star.decompress(foreground_tile_data)
+                background_tiles = star.decompress(background_tile_data)
+            else:
+                foreground_tiles = nemesis.decompress(foreground_tile_data)
+                background_tiles = nemesis.decompress(background_tile_data)
+            """
+
+            #level['tiles'] = foreground_tiles.ljust(background_offset*0x20, '\0') + background_tiles
+
+            levels[level_id] = level
+        return levels
+
+    def load(self):
+        super(RistarROM, self).load()
 
         self.serial = self.data[0x183:0x18a]
         self.date = self.data[0x11d:0x120]
@@ -142,7 +142,7 @@ class RistarROM(ROM):
         else:
             raise self.UnrecognizedROM()
 
-    def load_level(self, level_id):
+    def old_load_level(self, level_id):
         pointers = self.pointers[self.rom_version]
         level = {}
         
@@ -278,477 +278,3 @@ class RistarROM(ROM):
         return level
 
 
-class Canvas(BaseCanvas):
-    def reset(self):
-        self.camera.setX(0)
-        self.camera.setY(0)
-
-    @property
-    def editor(self):
-        return self.parent()
-
-    def updateImage(self):
-        super(Canvas, self).updateImage()
-        from PyQt4 import QtGui, QtCore
-        if not self.parent().level_loaded:
-            return
-
-        foreground = self.parent().current_level['foreground']
-        background = self.parent().current_level['background']
-        blocks_foreground = self.parent().current_level['blocks_foreground']
-        blocks_background = self.parent().current_level['blocks_background']
-
-        self.wrap_background = True
-        self.block_size = 256
-
-        self.max_camera = QtCore.QPoint(self.block_size*foreground['x'], self.block_size*foreground['y'])
-        self.old_camera = QtCore.QPoint(self.camera)
-        self.camera += self.delta/self.zoom
-        if self.camera.x() + self.width()/self.zoom > self.max_camera.x():
-            self.camera.setX(self.max_camera.x()-self.width()/self.zoom)
-        if self.camera.y() + self.height()/self.zoom > self.max_camera.y():
-            self.camera.setY(self.max_camera.y()-self.height()/self.zoom)
-        if self.camera.x() < 0:
-            self.camera.setX(0)
-        if self.camera.y() < 0:
-            self.camera.setY(0)
-        
-        self.setMouseTracking(True)
-        painter = QtGui.QPainter(self.image)
-
-        x_start = (self.camera.x() >> 8)-1
-        x_end = x_start + (int(self.width()/self.zoom) >> 8)+3
-        y_start = (self.camera.y() >> 8)-1
-        y_end = y_start + (int(self.height()/self.zoom) >> 8)+3
-
-        wrap_background = self.wrap_background
-        if self.editor.mode == 'levels':
-            draw_foreground = True
-            draw_background = True
-            plane = None
-        elif self.editor.mode == 'foreground':
-            draw_foreground = True
-            draw_background = False
-            plane = foreground
-        elif self.editor.mode == 'background':
-            draw_foreground = False
-            draw_background = True
-            wrap_background = False
-            plane = background
-        
-        if (self.camera.x()>>8) != (self.old_camera.x()>>8) or (self.camera.y()>>8) != (self.old_camera.y()>>8) or self.level_image.isNull():
-            self.reload = True
-
-        if self.reload:
-            self.reload = False
-            self.level_image = QtGui.QImage((x_end-x_start)*self.block_size, (y_end-y_start)*self.block_size, QtGui.QImage.Format_ARGB32)
-            level_painter = QtGui.QPainter(self.level_image)
-            level_painter.fillRect(self.level_image.rect(), QtCore.Qt.black)
-
-            for y in range(y_start, y_end):
-                for x in range(x_start, x_end):
-                    if draw_background:
-                        if wrap_background:
-                            background_block_id = background['layout'][y%background['y']][x%background['x']]
-                        else:
-                            try:
-                                background_block_id = background['layout'][y][x]
-                            except IndexError:
-                                background_block_id = None
-                        if background_block_id:
-                            level_painter.drawImage((x-x_start)*self.block_size, (y-y_start)*self.block_size, blocks_background[background_block_id])
-
-                    if draw_foreground:
-                        try:
-                            foreground_block_id = foreground['layout'][y][x]
-                        except IndexError:
-                            foreground_block_id = None
-                        if foreground_block_id:
-                            try:
-                                level_painter.drawImage((x-x_start)*self.block_size, (y-y_start)*self.block_size, blocks_foreground[foreground_block_id])
-                            except IndexError:
-                                pass
-
-                    if not self.delta and self.editor.mode in ('background', 'foreground') and self.editor.pane_tab.selected_block is not None and (x,y) == self.mouse_layout_xy() and x < plane['x'] and y < plane['y']:
-                        if self.editor.mode == 'foreground':
-                            hover_block = QtGui.QImage(blocks_foreground[self.editor.pane_tab.selected_block])
-                        elif self.editor.mode == 'background':
-                            hover_block = QtGui.QImage(blocks_background[self.editor.pane_tab.selected_block])
-                        image_set_alpha(hover_block, 0x80)
-                        level_painter.drawImage((x-x_start)*self.block_size, (y-y_start)*self.block_size, hover_block)
-
-        source_rect = self.level_image.rect()
-        source_rect.setX((self.camera.x()&0xff)+self.block_size)
-        source_rect.setWidth(self.width()/self.zoom)
-        source_rect.setY((self.camera.y()&0xff)+self.block_size)
-        source_rect.setHeight(self.height()/self.zoom)
-        painter.drawImage(self.rect(), self.level_image, source_rect)
-
-    def mouse_layout_xy(self):
-        return ((int(self.camera.x()+self.mouse_pos.x()/self.zoom)>>8),(int(self.camera.y()+self.mouse_pos.y()/self.zoom)>>8))
-
-    def resizeEvent(self, event):
-        self.reload = True
-
-    def mouseMoveEvent(self, event):
-        from PyQt4 import QtGui, QtCore
-        #self.move_timer = QtCore.QTimer.singleShot(200, self.startMoving)
-        self.updateMouse(event)
-        #QtGui.QToolTip.showText(event.globalPos(), '{0}x{1}'.format(event.x(), event.y()), self, QtCore.QRect(event.pos(), QtCore.QPoint(1,1)))
-
-    def mousePressEvent(self, event):
-        self.pressed = True
-        self.updateMouse(event)
-        if not self.delta and self.editor.mode in ('foreground', 'background') and self.editor.pane_tab.selected_block is not None:
-            if self.editor.mode == 'foreground':
-                plane = self.editor.current_level['foreground']
-            elif self.editor.mode == 'background':
-                plane = self.editor.current_level['background']
-            x, y = self.mouse_layout_xy()
-            if x < plane['x'] and y < plane['y']:
-                plane['layout'][y][x] = self.editor.pane_tab.selected_block
-                self.reload = True
-
-    def mouseReleaseEvent(self, event):
-        self.pressed = False
-        self.updateMouse(event)
-
-    def leaveEvent(self, event):
-        self.delta.setX(0)
-        self.delta.setY(0)
-        self.mouse_pos = QtCore.QPoint()
-
-    def wheelEvent(self, event):
-        steps = event.delta() / (8*15)
-        if event.orientation() == QtCore.Qt.Vertical:
-            self.zoomBy(steps)
-
-    def zoomBy(self, steps):
-        self.zoom += (0.1*steps)*self.zoom
-        if self.zoom < 0.15:
-            self.zoom = 0.15
-        if self.zoom > 10:
-            self.zoom = 10
-        self.reload = True
-
-    def updateMouse(self, event):
-        def speed(distance):
-            speed = (50-distance)/10
-            if self.pressed:
-                speed *= 3
-            return speed
-
-        self.old_mouse_pos = self.mouse_pos
-        self.mouse_pos = event.pos()
-
-        if event.x() > self.width()-50:
-            self.delta.setX(speed(self.width()-event.x()))
-        elif event.x() < 50:
-            self.delta.setX(-speed(event.x()))
-        else:
-            self.delta.setX(0)
-
-        if event.y() > self.height()-50:
-            self.delta.setY(speed(self.height()-event.y()))
-        elif event.y() < 50:
-            self.delta.setY(-speed(event.y()))
-        else:
-            self.delta.setY(0)
-
-        if not self.delta and ((self.old_mouse_pos/self.zoom+self.camera).x()>>8) != ((self.mouse_pos/self.zoom+self.camera).x()>>8) or ((self.old_mouse_pos/self.zoom+self.camera).y()>>8) != ((self.mouse_pos/self.zoom+self.camera).y()>>8):
-            self.reload = True
-
-
-    def startMoving(self):
-        #self.delta.setX(12)
-        #self.delta.setY(2)
-
-        '''
-        x = 10
-        y = 10
-        i = 0
-        for color in self.parent().rom.level['palette']:
-            painter.setBrush(QtGui.QBrush(QtGui.QColor(color)))
-            painter.drawRect(x, y, 30, 30)
-            x += 30
-            i += 1
-            if i % 16 == 0:
-                x = 10
-                y += 30
-        x = 10
-        y = 150
-        i = 0
-        for block in self.parent().rom.level['blocks_16']:
-            painter.drawImage(x, y, block)
-            x += 16
-            i += 1
-            if i % 32 == 0:
-                x = 10
-                y += 16
-        painter.drawText(self.rect(), QtCore.Qt.AlignCenter, "Welcome to Feel2")
-
-        x = 10
-        y = 300
-        i = 0
-        for block in self.parent().rom.level['blocks']:
-            painter.drawImage(x, y, block)
-            x += 256
-            i += 1
-            if i % 32 == 0:
-                x = 10
-                y += 256
-        '''
-
-class ProjectLoader(QtCore.QThread):
-    started = QtCore.pyqtSignal(int)
-    progress = QtCore.pyqtSignal(int)
-    loaded = QtCore.pyqtSignal(object, object, Project)
-
-    def __init__(self, filename):
-        super(ProjectLoader, self).__init__()
-        self.filename = filename
-
-    def run(self):
-        rom = RistarROM()
-        rom.load(self.filename)
-
-        self.started.emit(len(rom.levels))
-        self.progress.emit(0)
-
-        levels = {}
-        thumbnails = {}
-        i = 0
-        for level_id in rom.levels:
-            if level_id > 3:
-                break
-            try:
-                levels[level_id] = rom.load_level(level_id)
-            except object as e:
-                print 'Could not load level {id} ({e})'.format(id=level_id, e=e)
-
-            # select block with biggest entropy for thumbnail
-            blocks_entropy = map(image_entropy, levels[level_id]['blocks_foreground'])
-            thumbnails[level_id] = blocks_entropy.index(max(blocks_entropy))
-
-            i += 1
-            self.progress.emit(i)
-
-        self.loaded.emit(levels, thumbnails, rom)
-
-
-class BlockSelector(QtGui.QWidget):
-    selected = QtCore.pyqtSignal(int)
-
-    def __init__(self, blocks, block_names=None, block_size=256):
-        super(BlockSelector, self).__init__()
-
-        self.current_block = None
-        self.selected_block = None
-        self.block_size = block_size
-        self.blocks = blocks
-        self.block_names = block_names
-        self.delta = 0
-        self.pos = 0
-
-        self.setMouseTracking(True)
-
-        timer = QtCore.QTimer(self)
-        timer.timeout.connect(self.update)
-        timer.start(1000/30)
-
-    @property
-    def blocks(self):
-        return self._blocks
-
-    @blocks.setter
-    def blocks(self, value):
-        self._blocks = value
-        self.block_list = sorted(value.keys())
-
-    @blocks.deleter
-    def blocks(self):
-        del self._blocks
-        del self.block_list        
-
-    def reset(self):
-        self.selected_block = None
-        self.pos = 0
-
-    def paintEvent(self, event):
-        self.pos += self.delta
-        pos_max = len(self.blocks)*(self.height()-20)+10
-        if self.pos + self.width() > pos_max:
-            self.pos = pos_max-self.width()
-        if self.pos < 0:
-            self.pos = 0
-
-        x = 10-self.pos
-        y = 10
-        i = 0
-        thumb_size = self.height()-20
-        painter = QtGui.QPainter(self)
-        painter.fillRect(self.rect(), QtCore.Qt.black)
-
-        for block_id in self.block_list:
-            block = self.blocks[block_id]
-            thumbnail = QtGui.QImage(block) 
-            if self.current_block == block_id:
-                thumb_margin = 0
-            else:
-                thumb_margin = 5
-                image_set_alpha(thumbnail, 0x80)
-
-            thumb_rect = QtCore.QRect(x+thumb_margin, y+thumb_margin, thumb_size-thumb_margin*2, thumb_size-thumb_margin*2)
-            if self.selected_block == block_id:
-                painter.setPen(QtCore.Qt.gray)
-                border_rect = thumb_rect.adjusted(-1, -1, 1, 1)
-                painter.drawRect(border_rect)
-
-            if -thumb_size+thumb_margin*2 < x+thumb_margin < self.width():
-                painter.drawImage(thumb_rect, thumbnail, thumbnail.rect())
-            x += thumb_size
-            i += 1
-
-        if self.current_block is not None and self.block_names is not None and self.current_block in self.block_names:
-            painter.setPen(QtCore.Qt.NoPen)
-            painter.setBrush(QtGui.QColor(0, 0, 0, 128))
-            rect = QtCore.QRect(0, self.height()-40, self.width(), 40)
-            painter.drawRect(rect)
-            painter.setPen(QtCore.Qt.white)
-            painter.setFont(QtGui.QFont("Helvetica", 12))
-            painter.drawText(rect, QtCore.Qt.AlignCenter, self.block_names[self.current_block])
-
-    def mouseMoveEvent(self, event):
-        try:
-            if self.pos+event.x() >= 10:
-                self.current_block = self.block_list[(self.pos+event.x()-10)/(self.height()-20)]
-            else:
-                self.current_block = None
-        except IndexError:
-            self.current_block = None
-        self.updateMouse(event)
-
-    def mousePressEvent(self, event):
-        self.pressed = True
-        if self.current_block is not None:
-            self.selected_block = self.current_block
-            self.selected.emit(self.selected_block)
-        self.updateMouse(event)
-
-    def mouseReleaseEvent(self, event):
-        self.pressed = False
-        self.updateMouse(event)
-
-    def leaveEvent(self, event):
-        self.delta = 0
-        self.current_block = None
-
-    def updateMouse(self, event):
-        def speed(distance):
-            speed = (50-distance)
-            return speed
-
-        if event.x() > self.width()-50:
-            self.delta = speed(self.width()-event.x())
-        elif event.x() < 50:
-            self.delta = -speed(event.x())
-        else:
-            self.delta = 0
-
-class LevelSelector(BlockSelector):
-    def __init__(self, level_names, editor):
-        self.editor = editor
-        blocks = dict((level_id, self.editor.levels[level_id]['blocks_foreground'][thumbnail_id]) for (level_id, thumbnail_id) in self.editor.thumbnails.items())
-        super(LevelSelector, self).__init__(blocks, block_names=level_names)
-
-        self.level_names = level_names
-
-
-class Pane(BasePane):
-    pass
-
-    
-class Editor(BaseEditor):
-    def __init__(self):
-        super(Editor, self).__init__()
-
-        self.level_loaded = False
-        self.show_pane = True
-
-    def createCanvas(self):
-        self.canvas = Canvas()
-
-    def createPane(self):
-        self.pane = Pane()
-        self.pane.currentChanged.connect(self.set_mode)
-
-    def keyPressEvent(self, event):
-        if event.key() == QtCore.Qt.Key_L:
-            self.load_rom('./roms/Ristar - The Shooting Star (J) [!].bin')
-        elif event.key() == QtCore.Qt.Key_0:
-            self.canvas.zoom = 1.0
-            self.canvas.reload = True
-        elif event.key() == QtCore.Qt.Key_P and event.modifiers() & QtCore.Qt.ControlModifier:
-            self.show_pane = not self.show_pane
-            self.pane.setVisible(self.show_pane)
-        else:
-            event.ignore()
-            super(Editor, self).keyPressEvent(event)
-
-    def load_rom(self, filename):
-        self.project_loader = ProjectLoader(filename)
-        self.project_loader.started.connect(self.started)
-        self.project_loader.progress.connect(self.progress)
-        self.project_loader.loaded.connect(self.loaded)
-        self.project_loader.start(QtCore.QThread.IdlePriority)
-    
-
-    def started(self, steps):
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setMaximum(steps)
-
-    def progress(self, step):
-        self.progress_bar.setValue(step)
-
-    def loaded(self, levels, thumbnails, project):
-        self.progress_bar.setVisible(False)
-        self.project = project
-        self.levels = levels
-        self.thumbnails = thumbnails
-
-        self.level_selector = LevelSelector(project.levels, editor=self)
-        self.level_selector.selected.connect(self.set_level)
-        self.foreground_selector = BlockSelector({})
-        self.background_selector = BlockSelector({})
-
-        self.set_level(0)
-
-        self.modes = {
-            0: 'levels',
-            1: 'foreground',
-            2: 'background',
-        }
-        self.mode_id = 0
-        self.pane.addTab(self.level_selector, 'Levels')
-        self.pane.addTab(self.foreground_selector, 'Foreground')
-        self.pane.addTab(self.background_selector, 'Background')
-
-    def set_level(self, level_id):
-        self.current_level = self.levels[level_id]
-        self.canvas.reset()
-        self.level_selector.selected_block = level_id
-        self.foreground_selector.blocks = dict(enumerate(self.levels[level_id]['blocks_foreground']))
-        self.foreground_selector.reset()
-        self.background_selector.blocks = dict(enumerate(self.levels[level_id]['blocks_background']))
-        self.background_selector.reset()
-        self.level_loaded = True
-        self.canvas.reload = True
-
-    def set_mode(self, mode_id):
-        self.pane_tab = self.pane.currentWidget()
-        self.mode_id = mode_id
-        self.canvas.reload = True
-
-    @property
-    def mode(self):
-        return self.modes[self.mode_id]
