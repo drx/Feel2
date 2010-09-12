@@ -68,7 +68,7 @@ class RistarROM(ROM):
     def get_levels(self):
         pointers = self.pointers[self.rom_version]
         data = self.data
-        levels = {}
+        levels = OrderedDict()
         for level_id in self.level_names:
             if level_id >= 0x24:
                 tileset_id = 0x15

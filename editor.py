@@ -508,6 +508,8 @@ class Editor(QtGui.QWidget):
 
         self.level_loaded = False
         self.show_pane = True
+        self.project_loaded = False
+        self.mode_id = -1
 
     def createCanvas(self):
         self.canvas = Canvas()
@@ -520,8 +522,6 @@ class Editor(QtGui.QWidget):
         if event.key() == QtCore.Qt.Key_L:
             from games.ristar import RistarROM
             self.load_rom(RistarROM, 'roms/Ristar - The Shooting Star (J) [!].bin')
-        elif event.key() == QtCore.Qt.Key_S:
-            self.save_rom()
         elif event.key() == QtCore.Qt.Key_0:
             self.canvas.zoom = 1.0
             self.canvas.reload = True
@@ -534,13 +534,14 @@ class Editor(QtGui.QWidget):
 
     def load_rom(self, project_class, filename):
         self.filename = filename
+        self.drop_project()
         self.project_loader = ProjectLoader(project_class(filename))
         self.project_loader.started.connect(self.started)
         self.project_loader.progress.connect(self.progress)
         self.project_loader.loaded.connect(self.loaded)
         self.project_loader.start(QtCore.QThread.IdlePriority)
 
-    def save_rom(self):
+    def save_project(self):
         saved = False
         for level_id in self.levels:
             for attr in self.levels[level_id]:
@@ -554,6 +555,18 @@ class Editor(QtGui.QWidget):
                     loader.save()
         if saved:
             self.project.save()
+
+    def drop_project(self):
+        if self.project_loaded:
+            self.pane.clear()
+            del self.level_selector
+            del self.foreground_selector
+            del self.background_selector
+            del self.project
+            del self.levels
+            del self.thumbnails
+            self.project_loaded = False
+            self.level_loaded = False
     
     def started(self, steps):
         self.progress_bar.setVisible(True)
@@ -583,6 +596,10 @@ class Editor(QtGui.QWidget):
         self.pane.addTab(self.foreground_selector, 'Foreground')
         self.pane.addTab(self.background_selector, 'Background')
 
+        self.set_level(self.levels.keys()[0])
+
+        self.project_loaded = True
+
     def set_level(self, level_id):
         self.current_level = self.levels[level_id]
         self.canvas.reset()
@@ -601,4 +618,6 @@ class Editor(QtGui.QWidget):
 
     @property
     def mode(self):
-        return self.modes[self.mode_id]
+        if self.mode_id != -1:
+            return self.modes[self.mode_id]
+        return None

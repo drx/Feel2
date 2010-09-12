@@ -101,3 +101,10 @@ QMenuBar::item:selected, QMenuBar::item:pressed { /* when selected using mouse o
                                stop: 0 #4a4a4a, stop: 0.4 #444444,
                                stop: 0.5 #373737, stop: 1.0 #4a4a4a);
 }
+QMenu::separator {
+    height: 2px;
+    background: #181818;
+    margin-left: 0;
+    margin-right: 0;
+}
+

@@ -18,10 +18,20 @@ class Window(QtGui.QMainWindow):
     def create_menus(self):
         self.menus = {}
         self.menus['project'] = self.menuBar().addMenu('&Project')
-        self.menus['project'].addAction(QtGui.QAction("&Load project", self, triggered=self.load_project))
+
+        action = QtGui.QAction("&Load project", self, triggered=self.load_project)
+        action.setShortcut(QtCore.Qt.CTRL + QtCore.Qt.Key_L)
+        self.menus['project'].addAction(action)
+
         self.menus['load_rom'] = self.menus['project'].addMenu('Load &ROM')
         for rom in ROMs:
             self.menus['load_rom'].addAction(QtGui.QAction(rom['name'], self, triggered=self.load_rom(rom['class'])))
+
+        self.menus['project'].addSeparator()
+        action = QtGui.QAction("&Save project", self, triggered=self.editor.save_project)
+        action.setShortcut(QtCore.Qt.CTRL + QtCore.Qt.Key_S)
+        self.menus['project'].addAction(action)
+
         self.menus['help'] = self.menuBar().addMenu('&Help')
         self.menus['help'].addAction(QtGui.QAction("&About Feel2", self, triggered=self.about))
 
@@ -77,8 +87,8 @@ def main(argv):
 
     window = Window() 
     window.show() 
- 
-    sys.exit(app.exec_())
+
+    app.exec_()
 
 if __name__=="__main__":
     main(sys.argv)
