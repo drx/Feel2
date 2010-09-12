@@ -47,6 +47,9 @@ class Canvas(QtGui.QWidget):
         timer.timeout.connect(self.update)
         timer.start(1000/24)
 
+        self.ristar_movie = QtGui.QMovie("data/ristar.gif")
+        self.ristar_movie.start()
+
     def reset(self):
         self.camera.setX(0)
         self.camera.setY(0)
@@ -63,7 +66,13 @@ class Canvas(QtGui.QWidget):
 
         if self.image.isNull():
             painter.setPen(QtCore.Qt.white)
-            painter.drawText(self.rect(), QtCore.Qt.AlignCenter, "Welcome to Feel2")
+            text = "Welcome to Feel2"
+            painter.setFont(QtGui.QFont("Helvetica", 24))
+            text_rect = painter.boundingRect(self.rect(), QtCore.Qt.AlignCenter, text)
+            current_image = self.ristar_movie.currentImage()
+            movie_rect = current_image.rect().adjusted(self.width()/2-current_image.width()/2, self.height()/2-current_image.height()/2, 0, 0)
+            painter.drawText(QtCore.QPoint(text_rect.left(),self.height()/2+current_image.height()-60), text)
+            painter.drawImage(movie_rect, current_image)
             return
 
         painter.drawImage(self.rect(), self.image)
@@ -217,12 +226,13 @@ class Canvas(QtGui.QWidget):
         self.updateMouse(event)
         if not self.delta and self.editor.mode in ('foreground', 'background') and self.editor.pane_tab.selected_block is not None:
             if self.editor.mode == 'foreground':
-                plane = self.editor.current_level['foreground'].data
+                plane = self.editor.current_level['foreground']
             elif self.editor.mode == 'background':
-                plane = self.editor.current_level['background'].data
+                plane = self.editor.current_level['background']
             x, y = self.mouse_layout_xy()
-            if x < plane['x'] and y < plane['y']:
-                plane['layout'][y][x] = self.editor.pane_tab.selected_block
+            if x < plane.data['x'] and y < plane.data['y']:
+                plane.data['layout'][y][x] = self.editor.pane_tab.selected_block
+                plane.changed = True
                 self.reload = True
 
     def mouseReleaseEvent(self, event):
@@ -436,7 +446,7 @@ class ProjectLoader(QtCore.QThread):
         thumbnails = {}
         i = 0
         for level_id in self.project.levels:
-            if level_id > 0x100:
+            if level_id > 0x1:
                 continue
             try:
                 for attr in self.project.levels[level_id]:
@@ -499,6 +509,8 @@ class Editor(QtGui.QWidget):
         if event.key() == QtCore.Qt.Key_L:
             from games.ristar import RistarROM
             self.load_rom(RistarROM, 'roms/Ristar - The Shooting Star (J) [!].bin')
+        elif event.key() == QtCore.Qt.Key_S:
+            self.save_rom()
         elif event.key() == QtCore.Qt.Key_0:
             self.canvas.zoom = 1.0
             self.canvas.reload = True
@@ -510,18 +522,27 @@ class Editor(QtGui.QWidget):
             super(Editor, self).keyPressEvent(event)
 
     def load_rom(self, project_class, filename):
-        import os.path, pickle
         self.filename = filename
-        if os.path.exists(filename+'.cache') and False:
-            pkl_file = open(self.filename+'.cache', 'rb')
-            cached_project = pickle.load(pkl_file)
-            self.loaded(self, cached_project['levels'], cached_project['thumbnails'], cached_project['project'])
-        else:
-            self.project_loader = ProjectLoader(project_class(filename))
-            self.project_loader.started.connect(self.started)
-            self.project_loader.progress.connect(self.progress)
-            self.project_loader.loaded.connect(self.loaded)
-            self.project_loader.start(QtCore.QThread.IdlePriority)
+        self.project_loader = ProjectLoader(project_class(filename))
+        self.project_loader.started.connect(self.started)
+        self.project_loader.progress.connect(self.progress)
+        self.project_loader.loaded.connect(self.loaded)
+        self.project_loader.start(QtCore.QThread.IdlePriority)
+
+    def save_rom(self):
+        saved = False
+        for level_id in self.levels:
+            for attr in self.levels[level_id]:
+                try:
+                    loader = self.levels[level_id][attr]
+                    loader.data
+                except AttributeError:
+                    continue
+                if loader.changed:
+                    saved = True
+                    loader.save()
+        if saved:
+            self.project.save()
     
     def started(self, steps):
         self.progress_bar.setVisible(True)
@@ -550,7 +571,6 @@ class Editor(QtGui.QWidget):
         self.pane.addTab(self.level_selector, 'Levels')
         self.pane.addTab(self.foreground_selector, 'Foreground')
         self.pane.addTab(self.background_selector, 'Background')
-        self.save_cache()
 
     def set_level(self, level_id):
         self.current_level = self.levels[level_id]
@@ -567,13 +587,6 @@ class Editor(QtGui.QWidget):
         self.pane_tab = self.pane.currentWidget()
         self.mode_id = mode_id
         self.canvas.reload = True
-
-    def save_cache(self):
-        return
-        import pickle
-        cached_project = {'levels': self.levels, 'thumbnails': self.thumbnails, 'project': self.project}
-        pkl_file = open(self.filename+'.cache', 'wb')
-        pickle.dump(cached_project, pkl_file)
 
     @property
     def mode(self):

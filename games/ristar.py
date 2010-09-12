@@ -122,8 +122,8 @@ class RistarROM(ROM):
     def load(self):
         super(RistarROM, self).load()
 
-        self.serial = self.data[0x183:0x18a]
-        self.date = self.data[0x11d:0x120]
+        self.serial = self.data['data'][0x183:0x18a]
+        self.date = self.data['data'][0x11d:0x120]
         if self.serial == 'G-4126 ':
             self.rom_version = 'jp'
         elif self.serial == 'MK-1555' and self.date == 'AUG':

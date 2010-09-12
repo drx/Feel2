@@ -32,6 +32,7 @@ class LoaderList(Loader):
     def load(self):
         for loader in self.loader_list:
             loader.load()
+        self.changed = False
         return self.data
 
     def save(self):
@@ -48,7 +49,7 @@ class StaticData(Loader):
         self.data = data
 
     def load(self):
-        pass
+        self.changed = False
     
     def save(self):
         pass
@@ -62,6 +63,7 @@ class Compressed(Loader):
         compressed = self.subloader.load()
         decompressed = self.decompress(compressed)
         self.data = Data(decompressed)
+        self.changed = False
         return self.data
 
     def save(self):
@@ -105,6 +107,7 @@ class MDPalette(Loader):
                 rgb_color += 0xff000000
             palette.append(rgb_color)
         self.data = palette
+        self.changed = False
         return palette
 
     def save(self):
@@ -130,10 +133,18 @@ class LevelLayout(Loader):
             layout.append(layout_line)
 
         self.data = {'x': x, 'y': y, 'layout': layout}
+        self.changed = False
         return self.data
 
     def save(self):
-        print 'Not implemented'
+        saved_data = ''
+        saved_data += chr(self.data['x']-1) + chr(self.data['y']-1)
+        for layout_line in self.data['layout']:
+            for layout_cell in layout_line:
+                saved_data += chr(layout_cell)
+        self.subloader.data = saved_data
+        self.subloader.changed = True
+        self.subloader.save()
 
 
 class DataArray(Loader):
@@ -147,11 +158,12 @@ class DataArray(Loader):
         self.end = None if length is None else self.address+length
 
     def load(self):
-        self.data = self.rom[self.address:self.end].get(self.alignment, 0)
+        self.data = self.rom['data'][self.address:self.end].get(self.alignment, 0)
+        self.changed = False
         return self.data
 
     def save(self):
-        self.rom[self.address:self.end] = Data.from_(self.alignment, self.data)
+        self.rom['data'][self.address:self.end] = Data.from_(self.alignment, self.data)
 
     @property
     def address(self):
@@ -169,15 +181,17 @@ class RelativePointerArray(Loader):
         self.end = None if length is None else self.address+length
 
     def load(self):
-        self.data = self.rom[self.address:self.end]
+        self.data = self.rom['data'][self.address:self.end]
+        self.changed = False
         return self.data
 
     def save(self):
-        self.rom[self.address:self.end] = self.data
+        self.rom['data'][self.address:self.end] = self.data
 
     @property
     def address(self):
-        return self.base_address + self.rom.word(self.base_address+self.index*self.alignment) + self.shift
+        return self.base_address + self.rom['data'].word(self.base_address+self.index*self.alignment) + self.shift
+
 
 
 class PointerArray(Loader):
@@ -190,15 +204,16 @@ class PointerArray(Loader):
         self.end = None if length is None else self.address+length
 
     def load(self):
-        self.data = self.rom[self.address:self.end]
+        self.data = self.rom['data'][self.address:self.end]
+        self.changed = False
         return self.data
 
     def save(self):
-        self.rom[self.address:self.end] = self.data
+        self.rom['data'] = self.rom['data'].splice(self.address, self.end, self.data)
 
     @property
     def address(self):
-        return self.rom.dword(self.base_address + self.index*self.alignment)
+        return self.rom['data'].dword(self.base_address + self.index*self.alignment)
 
 
 class DataSlice(Loader):
@@ -208,11 +223,12 @@ class DataSlice(Loader):
         self.length = length
 
     def load(self):
-        self.data = self.rom[self.address:self.address+self.length]
+        self.data = self.rom['data'][self.address:self.address+self.length]
+        self.changed = False
         return self.data
 
     def save(self):
-        self.rom[self.address:self.address+self.length] = self.data
+        self.rom['data'][self.address:self.address+self.length] = self.data
 
 
 class ShiftedBy(Loader):
@@ -229,6 +245,7 @@ class ShiftedBy(Loader):
         a = array(self.typecode, map(lambda x: x+self.shift, a))
         a.byteswap()
         self.data = Data(a.tostring())
+        self.changed = False
         return self.data
 
     def save(self):
@@ -259,12 +276,12 @@ class ROM(Project):
 
     def load(self):
         f = open(self.filename, "rb")
-        self.data = Data(f.read())
+        self.data = {'data': Data(f.read())}
         f.close()
 
     def save(self):
         f = open(self.filename, "wb")
-        f.write(self.data)
+        f.write(self.data['data'])
         f.close()        
 
     class UnrecognizedROM(Exception):
@@ -289,6 +306,11 @@ class Data(str):
         elif alignment == 4:
             return self.dword(addr)
 
+    def splice(self, i, j, data):
+        '''self[i:j] = data, except immutable'''
+        new_data = self[:i] + data + self[i+len(data):]
+        return new_data
+
     @staticmethod
     def from_byte(data):
         return Data(struct.pack('>B', data))
@@ -304,6 +326,8 @@ class Data(str):
     @staticmethod
     def from_(alignment, data):
             return {1: Data.from_byte, 2: Data.from_word, 4: Data.from_dword}[alignment](data)
+
+    
 
     def __len__(self):
         return len(str(self))
@@ -352,7 +376,7 @@ def build_blocks_16(level):
                             block_bits[pixel_addr] = color & 0xff
                         tile_i += 2
 
-            block_16 = {'data': block_bits.tostring()}
+            block_16 = {'data': block_bits.tostring(), 'pickle_data': True}
             block_16['block'] = QtGui.QImage(block_16['data'], 16, 16, QtGui.QImage.Format_ARGB32)
             blocks_16.append(block_16)
         level['blocks_16_'+plane] = blocks_16
