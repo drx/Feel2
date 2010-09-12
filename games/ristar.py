@@ -62,7 +62,7 @@ class RistarROM(ROM):
 
     level_processors = [
         BuildSmallBlocks(background='separate'),
-        BuildBigBlocks(background='separate'),
+        BuildBigBlocks(background='separate', get_flip=lambda flags: (flags & 0x2, flags & 0x4)),
     ]
 
     editor_options = {

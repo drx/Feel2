@@ -272,7 +272,7 @@ class Canvas(QtGui.QWidget):
         def speed(distance):
             speed = (50-distance)/10
             if self.pressed:
-                speed *= 3
+                speed *= 10
             return speed
 
         self.old_mouse_pos = self.mouse_pos
@@ -297,7 +297,7 @@ class Canvas(QtGui.QWidget):
 
 
 class BlockSelector(QtGui.QWidget):
-    selected = QtCore.pyqtSignal(int)
+    selected = QtCore.pyqtSignal(object)
 
     def __init__(self, blocks, block_names=None, block_size=256):
         super(BlockSelector, self).__init__()

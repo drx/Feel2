@@ -148,8 +148,11 @@ class LevelLayout(Loader):
         for cur_y in xrange(y):
             layout_line = []
             for cur_x in xrange(x):
-                layout_line.append(data[address])
-                address += 1
+                try:
+                    layout_line.append(data[address])
+                    address += 1
+                except IndexError:
+                    layout_line.append(0)
             layout.append(layout_line)
 
         self.data = {'x': x, 'y': y, 'layout': layout}
@@ -439,9 +442,13 @@ class BuildSmallBlocks(LevelProcessor):
 
 
 class BuildBigBlocks(LevelProcessor):
-    def __init__(self, block_size=256, background='shared'):
+    def __init__(self, block_size=256, background='shared', get_flip=None):
         self.block_size = block_size
         self.background = background
+        if get_flip is None:
+            self.get_flip = lambda flags: (flags & 0x4, flags & 0x1)
+        else:
+            self.get_flip = get_flip
 
         if background == 'shared':
             self.planes = ({'blocks_small': 'blocks_small', 'mappings_big': 'mappings_big', 'blocks': 'blocks'},)
@@ -465,7 +472,7 @@ class BuildBigBlocks(LevelProcessor):
                 for x in range(self.block_size/16):
                     for y in range(self.block_size/16):
                         flags, block_small_id = divmod(level[plane['mappings_big']].data.word(i*self.block_size*2+y*0x20+x*2), self.block_size*2)
-                        flip_x, flip_y = bool(flags & 0x2), bool(flags & 0x4)
+                        flip_x, flip_y = self.get_flip(flags)
                         try:
                             painter.drawImage(x*16, y*16, level[plane['blocks_small']][block_small_id]['block'].mirrored(horizontal = flip_x, vertical = flip_y))
                         except IndexError:
