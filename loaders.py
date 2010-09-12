@@ -1,7 +1,7 @@
 from PyQt4 import QtGui, QtCore
 import struct
 from array import array
-from compression import nemesis, star
+from compression import nemesis, star, enigma, kosinski
 
 
 class Loader(object):
@@ -86,6 +86,26 @@ class NemesisCompressed(Compressed):
     @staticmethod
     def decompress(compressed):
         return nemesis.decompress(compressed)
+
+    @staticmethod
+    def compress(decompressed):
+        print "Not implemented"
+
+
+class EnigmaCompressed(Compressed):
+    @staticmethod
+    def decompress(compressed):
+        return enigma.decompress(compressed)
+
+    @staticmethod
+    def compress(decompressed):
+        print "Not implemented"
+
+
+class KosinskiCompressed(Compressed):
+    @staticmethod
+    def decompress(compressed):
+        return kosinski.decompress(compressed)
 
     @staticmethod
     def compress(decompressed):
@@ -254,6 +274,23 @@ class ShiftedBy(Loader):
         self.subloader.save()
 
 
+class File(Loader):
+    def __init__(self, filename):
+        import os.path
+        self.filename = os.path.join(current_path, filename)
+
+    def load(self):
+        f = open(self.filename, "rb")
+        self.data = Data(f.read())
+        f.close()
+        return self.data
+
+    def save(self):
+        f = open(self.filename, "wb")
+        f.write(self.data)
+        f.close()        
+
+
 class Project(object):
     def load(self):
         pass
@@ -342,70 +379,101 @@ class Data(str):
         return self.__getitem__(slice(i, j))
 
 
-def build_blocks_16(level):
-    '''Build 16x16 blocks'''
-    for plane in ('foreground', 'background'):
-        blocks_16 = []
-        for i in xrange(len(level['mappings_16_'+plane].data)/8):
-            block = QtGui.QImage(16, 16, QtGui.QImage.Format_ARGB32)
+class LevelProcessor(object):
+    pass
+
+
+class BuildSmallBlocks(LevelProcessor):
+    def __init__(self, block_size=16, background='shared'):
+        self.block_size = block_size
+        self.background = background
+        if background == 'shared':
+            self.planes = ({'mappings_small': 'mappings_small', 'blocks_small': 'blocks_small'},)
+        else:
+            self.planes = (
+                {'mappings_small': 'mappings_small_foreground', 'blocks_small': 'blocks_small_foreground'},
+                {'mappings_small': 'mappings_small_background', 'blocks_small': 'blocks_small_background'},
+                )
+
+    def process(self, level):
+        '''Build 16x16 blocks'''
+        for plane in self.planes:
+            blocks_small = []
+            for i in xrange(len(level[plane['mappings_small']].data)/8):
+                block = QtGui.QImage(self.block_size, self.block_size, QtGui.QImage.Format_ARGB32)
+                block.fill(0xff000000)
+                block_bits = array('B', '\0'*block.numBytes())
+                block_bytes_per_line = block.bytesPerLine()
+                for x in xrange(2):
+                    for y in xrange(2):
+                        flags, tile_id = divmod(level[plane['mappings_small']].data.word(i*8+y*4+x*2), 0x800)
+                        flip_x, flip_y = flags & 0x1, flags & 0x2
+                        palette_line = (flags & 0xc) >> 2
+
+                        tile_data = level['tiles'].data[tile_id*0x20:(tile_id+1)*0x20]
+                        tile_i = 0
+                        for tile_byte in tile_data:
+                            if isinstance(tile_byte, str):
+                                tile_byte = ord(tile_byte)
+                            tile_y, tile_x = divmod(tile_i, 8)
+                            for k in xrange(2):
+                                tyle_byte, palette_cell = divmod(tile_byte, 0x10)
+                                color = level['palette'].data[palette_line*0x10+palette_cell]
+                                set_x, set_y = tile_x+k, tile_y
+                                if flip_x:
+                                    set_x = 7-set_x
+                                if flip_y:
+                                    set_y = 7-set_y
+                                pixel_addr = (y*8+set_y)*block_bytes_per_line+(x*8+set_x)*4
+                                block_bits[pixel_addr+3] = (color >> 24) & 0xff
+                                block_bits[pixel_addr+2] = (color >> 16) & 0xff
+                                block_bits[pixel_addr+1] = (color >> 8) & 0xff
+                                block_bits[pixel_addr] = color & 0xff
+                            tile_i += 2
+
+                block_small = {'data': block_bits.tostring(), 'pickle_data': True}
+                block_small['block'] = QtGui.QImage(block_small['data'], self.block_size, self.block_size, QtGui.QImage.Format_ARGB32)
+                blocks_small.append(block_small)
+            level[plane['blocks_small']] = blocks_small
+        return level
+
+
+class BuildBigBlocks(LevelProcessor):
+    def __init__(self, block_size=256, background='shared'):
+        self.block_size = block_size
+        self.background = background
+
+        if background == 'shared':
+            self.planes = ({'blocks_small': 'blocks_small', 'mappings_big': 'mappings_big', 'blocks': 'blocks'},)
+        else:
+            self.planes = (
+                {'blocks_small': 'blocks_small_foreground', 'mappings_big': 'mappings_big_foreground', 'blocks': 'blocks_foreground'},
+                {'blocks_small': 'blocks_small_background', 'mappings_big': 'mappings_big_background', 'blocks': 'blocks_background'},
+                )
+
+    def process(self, level):
+        '''Build 256x256 blocks'''
+        for plane in self.planes:
+            blocks_big = []
+            block = QtGui.QImage(self.block_size, self.block_size, QtGui.QImage.Format_ARGB32)
             block.fill(0xff000000)
-            block_bits = array('B', '\0'*block.numBytes())
-            block_bytes_per_line = block.bytesPerLine()
-            for x in xrange(2):
-                for y in xrange(2):
-                    flags, tile_id = divmod(level['mappings_16_'+plane].data.word(i*8+y*4+x*2), 0x800)
-                    flip_x, flip_y = flags & 0x1, flags & 0x2
-                    palette_line = (flags & 0xc) >> 2
+            blocks_big.append(block)  # empty block
+            for i in xrange(len(level[plane['mappings_big']].data)/(self.block_size*2)):
+                block = QtGui.QImage(self.block_size, self.block_size, QtGui.QImage.Format_ARGB32)
+                block.fill(0x00000000)
+                painter = QtGui.QPainter(block)
+                for x in range(self.block_size/16):
+                    for y in range(self.block_size/16):
+                        flags, block_small_id = divmod(level[plane['mappings_big']].data.word(i*self.block_size*2+y*0x20+x*2), self.block_size*2)
+                        flip_x, flip_y = bool(flags & 0x2), bool(flags & 0x4)
+                        try:
+                            painter.drawImage(x*16, y*16, level[plane['blocks_small']][block_small_id]['block'].mirrored(horizontal = flip_x, vertical = flip_y))
+                        except IndexError:
+                            pass
 
-                    tile_data = level['tiles'].data[tile_id*0x20:(tile_id+1)*0x20]
-                    tile_i = 0
-                    for tile_byte in tile_data:
-                        tile_y, tile_x = divmod(tile_i, 8)
-                        for k in xrange(2):
-                            tyle_byte, palette_cell = divmod(ord(tile_byte), 0x10)
-                            color = level['palette'].data[palette_line*0x10+palette_cell]
-                            set_x, set_y = tile_x+k, tile_y
-                            if flip_x:
-                                set_x = 7-set_x
-                            if flip_y:
-                                set_y = 7-set_y
-                            pixel_addr = (y*8+set_y)*block_bytes_per_line+(x*8+set_x)*4
-                            block_bits[pixel_addr+3] = (color >> 24) & 0xff
-                            block_bits[pixel_addr+2] = (color >> 16) & 0xff
-                            block_bits[pixel_addr+1] = (color >> 8) & 0xff
-                            block_bits[pixel_addr] = color & 0xff
-                        tile_i += 2
-
-            block_16 = {'data': block_bits.tostring(), 'pickle_data': True}
-            block_16['block'] = QtGui.QImage(block_16['data'], 16, 16, QtGui.QImage.Format_ARGB32)
-            blocks_16.append(block_16)
-        level['blocks_16_'+plane] = blocks_16
-    return level
-
-
-def build_blocks_256(level):
-    '''Build 256x256 blocks'''
-    for plane in ('foreground', 'background'):
-        blocks_256 = []
-        block = QtGui.QImage(256, 256, QtGui.QImage.Format_ARGB32)
-        block.fill(0xff000000)
-        blocks_256.append(block)  # empty block
-        for i in xrange(len(level['mappings_256_'+plane].data)/0x200):
-            block = QtGui.QImage(256, 256, QtGui.QImage.Format_ARGB32)
-            block.fill(0x00000000)
-            painter = QtGui.QPainter(block)
-            for x in range(16):
-                for y in range(16):
-                    flags, block_16_id = divmod(level['mappings_256_'+plane].data.word(i*0x200+y*0x20+x*2), 0x200)
-                    flip_x, flip_y = bool(flags & 0x2), bool(flags & 0x4)
-                    try:
-                        painter.drawImage(x*16, y*16, level['blocks_16_'+plane][block_16_id]['block'].mirrored(horizontal = flip_x, vertical = flip_y))
-                    except IndexError:
-                        pass
-
-            blocks_256.append(block)
-        level['blocks_'+plane] = blocks_256
-    return level
+                blocks_big.append(block)
+            level[plane['blocks']] = blocks_big
+        return level
 
 
 from UserDict import DictMixin

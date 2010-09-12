@@ -61,9 +61,14 @@ class RistarROM(ROM):
     }
 
     level_processors = [
-        build_blocks_16,
-        build_blocks_256,
+        BuildSmallBlocks(background='separate'),
+        BuildBigBlocks(background='separate'),
     ]
+
+    editor_options = {
+        'block_size': 256,
+        'background_mappings': 'separate',
+    }
 
     def get_levels(self):
         pointers = self.pointers[self.rom_version]
@@ -80,10 +85,10 @@ class RistarROM(ROM):
                 collisionset_id = level_id
             background_offset = DataArray(data, pointers['mappings_16_background_offset'], tileset_id, alignment=2, length=2).load()
             level = {
-                'mappings_256_foreground': StarCompressed(PointerArray(data, pointers['mappings_256_foreground'], level_id)),
-                'mappings_256_background': StarCompressed(PointerArray(data, pointers['mappings_256_background'], tileset_id)),
-                'mappings_16_foreground': StarCompressed(PointerArray(data, pointers['mappings_16_foreground'], tileset_id, alignment=8)),
-                'mappings_16_background': ShiftedBy(StarCompressed(PointerArray(data, pointers['mappings_16_background'], tileset_id, alignment=8)), shift=background_offset, alignment=2),
+                'mappings_big_foreground': StarCompressed(PointerArray(data, pointers['mappings_256_foreground'], level_id)),
+                'mappings_big_background': StarCompressed(PointerArray(data, pointers['mappings_256_background'], tileset_id)),
+                'mappings_small_foreground': StarCompressed(PointerArray(data, pointers['mappings_16_foreground'], tileset_id, alignment=8)),
+                'mappings_small_background': ShiftedBy(StarCompressed(PointerArray(data, pointers['mappings_16_background'], tileset_id, alignment=8)), shift=background_offset, alignment=2),
                 'objects': StarCompressed(RelativePointerArray(data, pointers['objects'], objectset_id, shift=2)),
                 'level_collisions': StarCompressed(RelativePointerArray(data, pointers['level_collisions'], collisionset_id)),
                 'collision_array': DataSlice(data, pointers['collision_array'], 0x3c0),

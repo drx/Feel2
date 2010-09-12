@@ -42,7 +42,7 @@ class Window(QtGui.QMainWindow):
         file_dialog.restoreState(self.settings.value("loadproject/state").toByteArray())
         file_dialog.exec_()
         for filename in file_dialog.selectedFiles():
-            self.editor.load_fap(filename)
+            self.editor.load_project(str(filename))
         self.settings.setValue("loadproject/state", file_dialog.saveState())
 
     def load_rom(self, rom_class):

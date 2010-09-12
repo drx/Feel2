@@ -132,8 +132,8 @@ class Canvas(QtGui.QWidget):
 
         foreground = self.parent().current_level['foreground'].data
         background = self.parent().current_level['background'].data
-        blocks_foreground = self.parent().current_level['blocks_foreground']
-        blocks_background = self.parent().current_level['blocks_background']
+        blocks_foreground = self.parent().get_blocks(self.parent().current_level_id, 'foreground')
+        blocks_background = self.parent().get_blocks(self.parent().current_level_id, 'background')
 
         self.wrap_background = True
         self.block_size = 256
@@ -427,7 +427,7 @@ class BlockSelector(QtGui.QWidget):
 class LevelSelector(BlockSelector):
     def __init__(self, level_names, editor):
         self.editor = editor
-        blocks = dict((level_id, self.editor.levels[level_id]['blocks_foreground'][thumbnail_id]) for (level_id, thumbnail_id) in self.editor.thumbnails.items())
+        blocks = dict((level_id, self.editor.get_blocks(level_id, 'foreground')[thumbnail_id]) for (level_id, thumbnail_id) in self.editor.thumbnails.items())
         super(LevelSelector, self).__init__(blocks, block_names=level_names)
 
         self.level_names = level_names
@@ -457,20 +457,24 @@ class ProjectLoader(QtCore.QThread):
         thumbnails = {}
         i = 0
         for level_id in self.project.levels:
-            if level_id > 0x1:
-                continue
             try:
                 for attr in self.project.levels[level_id]:
-                    self.project.levels[level_id][attr].load()
+                    from loaders import Loader
+                    if isinstance(self.project.levels[level_id][attr], Loader):
+                        self.project.levels[level_id][attr].load()
                     i += 1
                     self.progress.emit(i)
                 for level_processor in self.project.level_processors:
-                    self.project.levels[level_id] = level_processor(self.project.levels[level_id])
-            except str as e:
+                    self.project.levels[level_id] = level_processor.process(self.project.levels[level_id])
+            except object as e:
                 print 'Could not load level {id} ({e})'.format(id=level_id, e=e)
 
             # select block with biggest entropy for thumbnail
-            blocks_entropy = map(image_entropy, self.project.levels[level_id]['blocks_foreground'])
+            if self.project.editor_options.get('background_mappings', 'shared') == 'shared':
+                blocks_foreground = self.project.levels[level_id]['blocks']
+            else:
+                blocks_foreground = self.project.levels[level_id]['blocks_foreground']
+            blocks_entropy = map(image_entropy, blocks_foreground)
             thumbnails[level_id] = blocks_entropy.index(max(blocks_entropy))
 
 
@@ -541,6 +545,17 @@ class Editor(QtGui.QWidget):
         self.project_loader.loaded.connect(self.loaded)
         self.project_loader.start(QtCore.QThread.IdlePriority)
 
+    def load_project(self, filename):
+        import imp, os.path
+        import loaders
+        loaders.current_path = os.path.dirname(filename)
+        project_module = imp.load_source('project_module', filename)
+        self.project_loader = ProjectLoader(project_module.project())
+        self.project_loader.started.connect(self.started)
+        self.project_loader.progress.connect(self.progress)
+        self.project_loader.loaded.connect(self.loaded)
+        self.project_loader.start(QtCore.QThread.IdlePriority)
+
     def save_project(self):
         saved = False
         for level_id in self.levels:
@@ -580,8 +595,13 @@ class Editor(QtGui.QWidget):
         self.project = project
         self.levels = levels
         self.thumbnails = thumbnails
+        self.options = project.editor_options
 
-        self.level_selector = LevelSelector(project.level_names, editor=self)
+        try:
+            level_names = project.level_names
+        except AttributeError:
+            level_names = dict((level_id, levels[level_id]['name']) for level_id in levels)
+        self.level_selector = LevelSelector(level_names, editor=self)
         self.level_selector.selected.connect(self.set_level)
         self.foreground_selector = BlockSelector({})
         self.background_selector = BlockSelector({})
@@ -602,14 +622,21 @@ class Editor(QtGui.QWidget):
 
     def set_level(self, level_id):
         self.current_level = self.levels[level_id]
+        self.current_level_id = level_id
         self.canvas.reset()
         self.level_selector.selected_block = level_id
-        self.foreground_selector.blocks = dict(enumerate(self.levels[level_id]['blocks_foreground']))
+        self.foreground_selector.blocks = dict(enumerate(self.get_blocks(level_id, 'foreground')))
         self.foreground_selector.reset()
-        self.background_selector.blocks = dict(enumerate(self.levels[level_id]['blocks_background']))
+        self.background_selector.blocks = dict(enumerate(self.get_blocks(level_id, 'background')))
         self.background_selector.reset()
         self.level_loaded = True
         self.canvas.reload = True
+
+    def get_blocks(self, level_id, plane):
+        if self.options.get('background_mappings', 'shared') == 'shared':
+            return self.levels[level_id]['blocks']
+        else:
+            return self.levels[level_id]['blocks_'+plane]
 
     def set_mode(self, mode_id):
         self.pane_tab = self.pane.currentWidget()

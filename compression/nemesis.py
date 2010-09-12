@@ -7,7 +7,10 @@ def decompress(compressed):
     compressed_array = array('B', compressed)
 
     def get_next_byte():
-        val = compressed_array[pointer['value']]
+        try:
+            val = compressed_array[pointer['value']]
+        except Exception:
+            val = 0
         pointer['value'] += 1
         return val
 
