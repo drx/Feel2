@@ -13,6 +13,17 @@ def image_set_alpha(image, alpha_value):
     image.setAlphaChannel(alpha)
 
 
+def image_color_to_transparent(image, color, tolerance=1):
+    from array import array
+    bits = array('B', image.bits().asstring(image.numBytes()))
+    color_r, color_g, color_b = (color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff 
+    for i in xrange(len(bits)/4):
+        r, g, b = bits[i*4+2], bits[i*4+1], bits[i*4]
+        if (r-color_r)*(r-color_r)+(g-color_g)*(g-color_g)+(b-color_b)*(b-color_b) < tolerance*tolerance:
+            bits[i*4+3] = 0
+    new_image = QtGui.QImage(bits.tostring(), image.width(), image.height(), QtGui.QImage.Format_ARGB32)
+    return new_image
+
 class Pane(QtGui.QTabWidget):
     def __init__(self, parent=None):
         super(Pane, self).__init__(parent)
@@ -67,12 +78,12 @@ class Canvas(QtGui.QWidget):
         if self.image.isNull():
             painter.setPen(QtCore.Qt.white)
             text = "Welcome to Feel2"
-            painter.setFont(QtGui.QFont("Helvetica", 24))
+            painter.setFont(QtGui.QFont("Futura", 24))
             text_rect = painter.boundingRect(self.rect(), QtCore.Qt.AlignCenter, text)
             current_image = self.ristar_movie.currentImage()
-            movie_rect = current_image.rect().adjusted(self.width()/2-current_image.width()/2, self.height()/2-current_image.height()/2, 0, 0)
-            painter.drawText(QtCore.QPoint(text_rect.left(),self.height()/2+current_image.height()-60), text)
-            painter.drawImage(movie_rect, current_image)
+            movie_rect = current_image.rect().adjusted(self.width()/2-current_image.width()/2+10, self.height()/2-current_image.height()/2, 0, 0)
+            painter.drawText(QtCore.QPoint(text_rect.left(),self.height()/2+current_image.height()-71), text)
+            painter.drawImage(movie_rect, image_color_to_transparent(current_image, 0x000000, 40))
             return
 
         painter.drawImage(self.rect(), self.image)
