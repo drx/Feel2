@@ -514,10 +514,7 @@ class Editor(QtGui.QWidget):
         self.pane.currentChanged.connect(self.set_mode)
 
     def keyPressEvent(self, event):
-        if event.key() == QtCore.Qt.Key_L:
-            from games.ristar import RistarROM
-            self.load_rom(RistarROM, 'roms/Ristar - The Shooting Star (J) [!].bin')
-        elif event.key() == QtCore.Qt.Key_0:
+        if event.key() == QtCore.Qt.Key_0:
             self.canvas.zoom = 1.0
             self.canvas.reload = True
         elif event.key() == QtCore.Qt.Key_P and event.modifiers() & QtCore.Qt.ControlModifier:
@@ -540,6 +537,7 @@ class Editor(QtGui.QWidget):
         project_module = imp.load_source('project_module', filename)
         self.filename = filename
         self.start_loading(project_module.project())
+        return project_module.project.name
 
     def start_loading(self, project):
         cache.load(self.filename)

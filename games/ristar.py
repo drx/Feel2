@@ -60,6 +60,8 @@ class RistarROM(ROM):
         0x2f: "2f: Treasure level (6-2)",
     }
 
+    name = 'Ristar'
+
     level_processors = [
         BuildSmallBlocks(background='separate'),
         BuildBigBlocks(background='separate', get_flip=lambda flags: (flags & 0x2, flags & 0x4)),

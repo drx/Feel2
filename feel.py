@@ -11,6 +11,8 @@ class Window(QtGui.QMainWindow):
         self.setWindowTitle("Feel2")
         self.editor = Editor()
         self.setCentralWidget(self.editor)
+       
+        self.max_recent_projects = 10
 
         self.create_menus()
         self.read_settings()
@@ -32,8 +34,66 @@ class Window(QtGui.QMainWindow):
         action.setShortcut(QtCore.Qt.CTRL + QtCore.Qt.Key_S)
         self.menus['project'].addAction(action)
 
+        self.menus['project'].addSeparator()
+        self.menus['recent_projects'] = self.menus['project'].addMenu('Recent projects')
+
+        self.recent_project_actions = []
+        for i in range(self.max_recent_projects):
+            self.recent_project_actions.append(QtGui.QAction(self, visible=False, triggered=self.load_recent_project))
+            if i in range(9):
+                key = QtCore.Qt.CTRL + QtCore.Qt.Key_1 + i
+            elif i == 9:
+                key = QtCore.Qt.CTRL + QtCore.Qt.Key_0
+            else:
+                key = None
+            if key is not None:
+                self.recent_project_actions[i].setShortcut(key)
+            self.menus['recent_projects'].addAction(self.recent_project_actions[i])
+
+        self.update_recent_projects()
+
         self.menus['help'] = self.menuBar().addMenu('&Help')
         self.menus['help'].addAction(QtGui.QAction("&About Feel2", self, triggered=self.about))
+
+    def load_recent_project(self):
+        action = self.sender()
+        if action:
+            self.load_project_file(action.data().toPyObject())
+
+    def add_recent_project(self, name, filename):
+        recent_projects = self.settings.value("recent_projects").toPyObject()
+        if recent_projects is None:
+            recent_projects = []
+
+        key = (name, filename)
+        try:
+            recent_projects.remove(key)
+        except ValueError:
+            pass
+        
+        recent_projects.insert(0, key)
+        del recent_projects[self.max_recent_projects:]
+        self.settings.setValue("recent_projects", recent_projects)
+
+        self.update_recent_projects()
+
+    def update_recent_projects(self):
+        recent_projects = self.settings.value("recent_projects").toPyObject()
+        if recent_projects is None:
+            return
+
+        n_recent_projects = min(len(recent_projects), self.max_recent_projects)
+        
+        import os.path
+        for i in range(n_recent_projects):
+            name, filename = recent_projects[i]
+            text = '{name} ({filename})'.format(name=name, filename=os.path.basename(filename))
+            self.recent_project_actions[i].setText(text)
+            self.recent_project_actions[i].setData(filename)
+            self.recent_project_actions[i].setVisible(True)
+
+        for i in range(n_recent_projects, self.max_recent_projects):
+            self.recent_project_actions[i].setVisible(False)
 
     def load_project(self):
         file_dialog = QtGui.QFileDialog()
@@ -42,8 +102,12 @@ class Window(QtGui.QMainWindow):
         file_dialog.restoreState(self.settings.value("loadproject/state").toByteArray())
         file_dialog.exec_()
         for filename in file_dialog.selectedFiles():
-            self.editor.load_project(str(filename))
+            self.load_project_file(filename)
         self.settings.setValue("loadproject/state", file_dialog.saveState())
+
+    def load_project_file(self, filename):
+        name = self.editor.load_project(str(filename))
+        self.add_recent_project(name, str(filename))
 
     def load_rom(self, rom_class):
         def do():

@@ -1,6 +1,8 @@
 from loaders import *
 
 class Sonic1(Project):
+    name = 'Sonic the Hedgehog'
+
     level_processors = [
         BuildSmallBlocks(),
         BuildBigBlocks(),
