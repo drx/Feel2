@@ -316,20 +316,6 @@ class BlockSelector(QtGui.QWidget):
         timer.timeout.connect(self.update_pos)
         timer.start(1000/30)
 
-    @property
-    def blocks(self):
-        return self._blocks
-
-    @blocks.setter
-    def blocks(self, value):
-        self._blocks = value
-        self.block_list = sorted(value.keys())
-
-    @blocks.deleter
-    def blocks(self):
-        del self._blocks
-        del self.block_list        
-
     def reset(self):
         self.selected_block = None
         self.pos = 0
@@ -354,8 +340,7 @@ class BlockSelector(QtGui.QWidget):
         painter = QtGui.QPainter(self)
         painter.fillRect(self.rect(), QtCore.Qt.black)
 
-        for block_id in self.block_list:
-            block = self.blocks[block_id]
+        for block_id, block in enumerate(self.blocks):
             thumbnail = QtGui.QImage(block) 
             if self.current_block == block_id:
                 thumb_margin = 0
@@ -374,7 +359,7 @@ class BlockSelector(QtGui.QWidget):
             x += thumb_size
             i += 1
 
-        if self.current_block is not None and self.block_names is not None and self.current_block in self.block_names:
+        if self.current_block is not None and self.block_names is not None:
             painter.setPen(QtCore.Qt.NoPen)
             painter.setBrush(QtGui.QColor(0, 0, 0, 128))
             rect = QtCore.QRect(0, self.height()-40, self.width(), 40)
@@ -386,7 +371,7 @@ class BlockSelector(QtGui.QWidget):
     def mouseMoveEvent(self, event):
         try:
             if self.pos+event.x() >= 10:
-                self.current_block = self.block_list[(self.pos+event.x()-10)/(self.height()-20)]
+                self.current_block = (self.pos+event.x()-10)/(self.height()-20)
             else:
                 self.current_block = None
         except IndexError:
@@ -427,7 +412,7 @@ class BlockSelector(QtGui.QWidget):
 class LevelSelector(BlockSelector):
     def __init__(self, level_names, editor):
         self.editor = editor
-        blocks = dict((level_id, self.editor.get_blocks(level_id, 'foreground')[thumbnail_id]) for (level_id, thumbnail_id) in self.editor.thumbnails.items())
+        blocks = [self.editor.get_blocks(level_id, 'foreground')[thumbnail_id] for (level_id, thumbnail_id) in enumerate(self.editor.thumbnails)]
         super(LevelSelector, self).__init__(blocks, block_names=level_names)
 
         self.level_names = level_names
@@ -449,33 +434,32 @@ class ProjectLoader(QtCore.QThread):
     def run_(self):
         self.project.load()
 
-        n_steps = sum(map(len, self.project.levels.values()))
+        n_steps = sum(map(len, self.project.levels))
         self.started.emit(n_steps)
         self.progress.emit(0)
 
-        levels = {}
-        thumbnails = {}
         i = 0
-        for level_id in self.project.levels:
+        thumbnails = []
+        for level_id, level in enumerate(self.project.levels):
             try:
-                for attr in self.project.levels[level_id]:
+                for attr in level:
                     from loaders import Loader
-                    if isinstance(self.project.levels[level_id][attr], Loader):
-                        self.project.levels[level_id][attr].load()
+                    if isinstance(level[attr], Loader):
+                        level[attr].load()
                     i += 1
                     self.progress.emit(i)
                 for level_processor in self.project.level_processors:
-                    self.project.levels[level_id] = level_processor.process(self.project.levels[level_id])
-            except object as e:
-                print 'Could not load level {id} ({e})'.format(id=level_id, e=e)
+                    level = level_processor.process(level)
+            except Exception as e:
+                print 'Could not load level {id} ({e})'.format(id=level['name'], e=e)
 
             # select block with biggest entropy for thumbnail
             if self.project.editor_options.get('background_mappings', 'shared') == 'shared':
-                blocks_foreground = self.project.levels[level_id]['blocks']
+                blocks_foreground = level['blocks']
             else:
-                blocks_foreground = self.project.levels[level_id]['blocks_foreground']
+                blocks_foreground = level['blocks_foreground']
             blocks_entropy = map(image_entropy, blocks_foreground)
-            thumbnails[level_id] = blocks_entropy.index(max(blocks_entropy))
+            thumbnails.append(blocks_entropy.index(max(blocks_entropy)))
 
 
         levels = self.project.levels
@@ -558,10 +542,10 @@ class Editor(QtGui.QWidget):
 
     def save_project(self):
         saved = False
-        for level_id in self.levels:
-            for attr in self.levels[level_id]:
+        for level in self.levels:
+            for attr in level:
                 try:
-                    loader = self.levels[level_id][attr]
+                    loader = level[attr]
                     loader.data
                 except AttributeError:
                     continue
@@ -600,7 +584,7 @@ class Editor(QtGui.QWidget):
         try:
             level_names = project.level_names
         except AttributeError:
-            level_names = dict((level_id, levels[level_id]['name']) for level_id in levels)
+            level_names = map(lambda x: x['name'], levels)
         self.level_selector = LevelSelector(level_names, editor=self)
         self.level_selector.selected.connect(self.set_level)
         self.foreground_selector = BlockSelector({})
@@ -616,7 +600,7 @@ class Editor(QtGui.QWidget):
         self.pane.addTab(self.foreground_selector, 'Foreground')
         self.pane.addTab(self.background_selector, 'Background')
 
-        self.set_level(self.levels.keys()[0])
+        self.set_level(0)
 
         self.project_loaded = True
 
@@ -625,9 +609,9 @@ class Editor(QtGui.QWidget):
         self.current_level_id = level_id
         self.canvas.reset()
         self.level_selector.selected_block = level_id
-        self.foreground_selector.blocks = dict(enumerate(self.get_blocks(level_id, 'foreground')))
+        self.foreground_selector.blocks = self.get_blocks(level_id, 'foreground')
         self.foreground_selector.reset()
-        self.background_selector.blocks = dict(enumerate(self.get_blocks(level_id, 'background')))
+        self.background_selector.blocks = self.get_blocks(level_id, 'background')
         self.background_selector.reset()
         self.level_loaded = True
         self.canvas.reload = True

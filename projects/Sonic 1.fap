@@ -12,8 +12,8 @@ class Sonic1(Project):
     }
 
     def get_levels(self):
-        return OrderedDict([
-            ('GHZ1', {
+        return [
+            {
                 'name': 'Green Hill Zone Act 1',
                 'tiles': NemesisCompressed(File('artnem/8x8 - GHZ1.bin')) + NemesisCompressed(File('artnem/8x8 - GHZ2.bin')),
                 'mappings_small': EnigmaCompressed(File('map16/GHZ.bin')),
@@ -25,8 +25,8 @@ class Sonic1(Project):
                 'collision_array': File('collide/Collision Array (Normal).bin'),
                 'rotated_collision_array': File('collide/Collision Array (Rotated).bin'),
                 'collision_index': File('collide/GHZ.bin'),
-            }),
-            ('GHZ2', {
+            },
+            {
                 'name': 'Green Hill Zone Act 2',
                 'tiles': NemesisCompressed(File('artnem/8x8 - GHZ1.bin')) + NemesisCompressed(File('artnem/8x8 - GHZ2.bin')),
                 'mappings_small': EnigmaCompressed(File('map16/GHZ.bin')),
@@ -38,8 +38,8 @@ class Sonic1(Project):
                 'collision_array': File('collide/Collision Array (Normal).bin'),
                 'rotated_collision_array': File('collide/Collision Array (Rotated).bin'),
                 'collision_index': File('collide/GHZ.bin'),
-            }),
-            ('GHZ3', {
+            },
+            {
                 'name': 'Green Hill Zone Act 3',
                 'tiles': NemesisCompressed(File('artnem/8x8 - GHZ1.bin')) + NemesisCompressed(File('artnem/8x8 - GHZ2.bin')),
                 'mappings_small': EnigmaCompressed(File('map16/GHZ.bin')),
@@ -51,8 +51,8 @@ class Sonic1(Project):
                 'collision_array': File('collide/Collision Array (Normal).bin'),
                 'rotated_collision_array': File('collide/Collision Array (Rotated).bin'),
                 'collision_index': File('collide/GHZ.bin'),
-            }),
-            ('LZ1', {
+            },
+            {
                 'name': 'Labyrinth Zone Act 1',
                 'tiles': NemesisCompressed(File('artnem/8x8 - LZ.bin')),
                 'mappings_small': EnigmaCompressed(File('map16/LZ.bin')),
@@ -64,8 +64,8 @@ class Sonic1(Project):
                 'collision_array': File('collide/Collision Array (Normal).bin'),
                 'rotated_collision_array': File('collide/Collision Array (Rotated).bin'),
                 'collision_index': File('collide/LZ.bin'),
-            }),
-            ('LZ2', {
+            },
+            {
                 'name': 'Labyrinth Zone Act 2',
                 'tiles': NemesisCompressed(File('artnem/8x8 - LZ.bin')),
                 'mappings_small': EnigmaCompressed(File('map16/LZ.bin')),
@@ -77,8 +77,8 @@ class Sonic1(Project):
                 'collision_array': File('collide/Collision Array (Normal).bin'),
                 'rotated_collision_array': File('collide/Collision Array (Rotated).bin'),
                 'collision_index': File('collide/LZ.bin'),
-            }),
-            ('LZ3', {
+            },
+            {
                 'name': 'Labyrinth Zone Act 3',
                 'tiles': NemesisCompressed(File('artnem/8x8 - LZ.bin')),
                 'mappings_small': EnigmaCompressed(File('map16/LZ.bin')),
@@ -90,8 +90,8 @@ class Sonic1(Project):
                 'collision_array': File('collide/Collision Array (Normal).bin'),
                 'rotated_collision_array': File('collide/Collision Array (Rotated).bin'),
                 'collision_index': File('collide/LZ.bin'),
-            }),
-            ('MZ1', {
+            },
+            {
                 'name': 'Marble Zone Act 1',
                 'tiles': NemesisCompressed(File('artnem/8x8 - MZ.bin')),
                 'mappings_small': EnigmaCompressed(File('map16/MZ.bin')),
@@ -103,8 +103,8 @@ class Sonic1(Project):
                 'collision_array': File('collide/Collision Array (Normal).bin'),
                 'rotated_collision_array': File('collide/Collision Array (Rotated).bin'),
                 'collision_index': File('collide/MZ.bin'),
-            }),
-            ('MZ2', {
+            },
+            {
                 'name': 'Marble Zone Act 2',
                 'tiles': NemesisCompressed(File('artnem/8x8 - MZ.bin')),
                 'mappings_small': EnigmaCompressed(File('map16/MZ.bin')),
@@ -116,8 +116,8 @@ class Sonic1(Project):
                 'collision_array': File('collide/Collision Array (Normal).bin'),
                 'rotated_collision_array': File('collide/Collision Array (Rotated).bin'),
                 'collision_index': File('collide/MZ.bin'),
-            }),
-            ('MZ3', {
+            },
+            {
                 'name': 'Marble Zone Act 3',
                 'tiles': NemesisCompressed(File('artnem/8x8 - MZ.bin')),
                 'mappings_small': EnigmaCompressed(File('map16/MZ.bin')),
@@ -129,8 +129,8 @@ class Sonic1(Project):
                 'collision_array': File('collide/Collision Array (Normal).bin'),
                 'rotated_collision_array': File('collide/Collision Array (Rotated).bin'),
                 'collision_index': File('collide/MZ.bin'),
-            }),
-            ('SLZ1', {
+            },
+            {
                 'name': 'Star Light Zone Act 1',
                 'tiles': NemesisCompressed(File('artnem/8x8 - SLZ.bin')),
                 'mappings_small': EnigmaCompressed(File('map16/SLZ.bin')),
@@ -142,8 +142,8 @@ class Sonic1(Project):
                 'collision_array': File('collide/Collision Array (Normal).bin'),
                 'rotated_collision_array': File('collide/Collision Array (Rotated).bin'),
                 'collision_index': File('collide/SLZ.bin'),
-            }),
-            ('SLZ2', {
+            },
+            {
                 'name': 'Star Light Zone Act 2',
                 'tiles': NemesisCompressed(File('artnem/8x8 - SLZ.bin')),
                 'mappings_small': EnigmaCompressed(File('map16/SLZ.bin')),
@@ -155,8 +155,8 @@ class Sonic1(Project):
                 'collision_array': File('collide/Collision Array (Normal).bin'),
                 'rotated_collision_array': File('collide/Collision Array (Rotated).bin'),
                 'collision_index': File('collide/SLZ.bin'),
-            }),
-            ('SLZ3', {
+            },
+            {
                 'name': 'Star Light Zone Act 3',
                 'tiles': NemesisCompressed(File('artnem/8x8 - SLZ.bin')),
                 'mappings_small': EnigmaCompressed(File('map16/SLZ.bin')),
@@ -168,8 +168,8 @@ class Sonic1(Project):
                 'collision_array': File('collide/Collision Array (Normal).bin'),
                 'rotated_collision_array': File('collide/Collision Array (Rotated).bin'),
                 'collision_index': File('collide/SLZ.bin'),
-            }),
-            ('SYZ1', {
+            },
+            {
                 'name': 'Spring Yard Zone Act 1',
                 'tiles': NemesisCompressed(File('artnem/8x8 - SYZ.bin')),
                 'mappings_small': EnigmaCompressed(File('map16/SYZ.bin')),
@@ -181,8 +181,8 @@ class Sonic1(Project):
                 'collision_array': File('collide/Collision Array (Normal).bin'),
                 'rotated_collision_array': File('collide/Collision Array (Rotated).bin'),
                 'collision_index': File('collide/SYZ.bin'),
-            }),
-            ('SYZ2', {
+            },
+            {
                 'name': 'Spring Yard Zone Act 2',
                 'tiles': NemesisCompressed(File('artnem/8x8 - SYZ.bin')),
                 'mappings_small': EnigmaCompressed(File('map16/SYZ.bin')),
@@ -194,8 +194,8 @@ class Sonic1(Project):
                 'collision_array': File('collide/Collision Array (Normal).bin'),
                 'rotated_collision_array': File('collide/Collision Array (Rotated).bin'),
                 'collision_index': File('collide/SYZ.bin'),
-            }),
-            ('SYZ3', {
+            },
+            {
                 'name': 'Spring Yard Zone Act 3',
                 'tiles': NemesisCompressed(File('artnem/8x8 - SYZ.bin')),
                 'mappings_small': EnigmaCompressed(File('map16/SYZ.bin')),
@@ -207,8 +207,8 @@ class Sonic1(Project):
                 'collision_array': File('collide/Collision Array (Normal).bin'),
                 'rotated_collision_array': File('collide/Collision Array (Rotated).bin'),
                 'collision_index': File('collide/SYZ.bin'),
-            }),
-            ('SBZ1', {
+            },
+            {
                 'name': 'Scrap Brain Zone Act 1',
                 'tiles': NemesisCompressed(File('artnem/8x8 - SBZ.bin')),
                 'mappings_small': EnigmaCompressed(File('map16/SBZ.bin')),
@@ -220,8 +220,8 @@ class Sonic1(Project):
                 'collision_array': File('collide/Collision Array (Normal).bin'),
                 'rotated_collision_array': File('collide/Collision Array (Rotated).bin'),
                 'collision_index': File('collide/SBZ.bin'),
-            }),
-            ('SBZ2', {
+            },
+            {
                 'name': 'Scrap Brain Zone Act 2',
                 'tiles': NemesisCompressed(File('artnem/8x8 - SBZ.bin')),
                 'mappings_small': EnigmaCompressed(File('map16/SBZ.bin')),
@@ -233,8 +233,8 @@ class Sonic1(Project):
                 'collision_array': File('collide/Collision Array (Normal).bin'),
                 'rotated_collision_array': File('collide/Collision Array (Rotated).bin'),
                 'collision_index': File('collide/SBZ.bin'),
-            }),
-            ('SBZ3', {
+            },
+            {
                 'name': 'Scrap Brain Zone Act 3',
                 'tiles': NemesisCompressed(File('artnem/8x8 - LZ.bin')),
                 'mappings_small': EnigmaCompressed(File('map16/LZ.bin')),
@@ -246,8 +246,8 @@ class Sonic1(Project):
                 'collision_array': File('collide/Collision Array (Normal).bin'),
                 'rotated_collision_array': File('collide/Collision Array (Rotated).bin'),
                 'collision_index': File('collide/LZ.bin'),
-            }),
-            ('FZ', {
+            },
+            {
                 'name': 'Final Zone',
                 'tiles': NemesisCompressed(File('artnem/8x8 - SBZ.bin')),
                 'mappings_small': EnigmaCompressed(File('map16/SBZ.bin')),
@@ -259,8 +259,8 @@ class Sonic1(Project):
                 'collision_array': File('collide/Collision Array (Normal).bin'),
                 'rotated_collision_array': File('collide/Collision Array (Rotated).bin'),
                 'collision_index': File('collide/SBZ.bin'),
-            }),
-            ('Ending', {
+            },
+            {
                 'name': 'Ending sequence',
                 'tiles': NemesisCompressed(File('artnem/8x8 - GHZ1.bin')) + NemesisCompressed(File('artnem/8x8 - GHZ2.bin')),
                 'mappings_small': EnigmaCompressed(File('map16/GHZ.bin')),
@@ -272,8 +272,8 @@ class Sonic1(Project):
                 'collision_array': File('collide/Collision Array (Normal).bin'),
                 'rotated_collision_array': File('collide/Collision Array (Rotated).bin'),
                 'collision_index': File('collide/GHZ.bin'),
-            }),
-        ])
+            },
+        ]
         
 
 project = Sonic1

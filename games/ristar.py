@@ -73,7 +73,7 @@ class RistarROM(ROM):
     def get_levels(self):
         pointers = self.pointers[self.rom_version]
         data = self.data
-        levels = OrderedDict()
+        levels = []
         for level_id in self.level_names:
             if level_id >= 0x24:
                 tileset_id = 0x15
@@ -94,6 +94,7 @@ class RistarROM(ROM):
                 'collision_array': DataSlice(data, pointers['collision_array'], 0x3c0),
                 'foreground': LevelLayout(PointerArray(data, pointers['layout_foreground'], level_id)),
                 'background': LevelLayout(PointerArray(data, pointers['layout_background'], tileset_id)),
+                'level_id': level_id
             }
 
             if level_id < 0x15:
@@ -121,7 +122,7 @@ class RistarROM(ROM):
            
             level['tiles'] = foreground_tiles + background_tiles 
 
-            levels[level_id] = level
+            levels.append(level)
         return levels
 
     def load(self):
