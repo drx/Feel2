@@ -1,4 +1,5 @@
 from PyQt4 import QtGui, QtCore
+from cache import cache
 
 
 def image_entropy(image):
@@ -441,7 +442,6 @@ class ProjectLoader(QtCore.QThread):
         self.progress.emit(0)
 
         i = 0
-        thumbnails = []
         for level_id, level in enumerate(self.project.levels):
             try:
                 for attr in level:
@@ -452,17 +452,22 @@ class ProjectLoader(QtCore.QThread):
                     self.progress.emit(i)
                 for level_processor in self.project.level_processors:
                     level = level_processor.process(level)
-            except Exception as e:
+            except str as e:
                 print 'Could not load level {id} ({e})'.format(id=level['name'], e=e)
 
-            # select block with biggest entropy for thumbnail
-            if self.project.editor_options.get('background_mappings', 'shared') == 'shared':
-                blocks_foreground = level['blocks']
-            else:
-                blocks_foreground = level['blocks_foreground']
-            blocks_entropy = map(image_entropy, blocks_foreground)
-            thumbnails.append(blocks_entropy.index(max(blocks_entropy)))
-
+        if 'thumbnails' in cache:
+            thumbnails = cache['thumbnails']
+        else:
+            thumbnails = []
+            for level in self.project.levels:
+                # select block with biggest entropy for thumbnail
+                if self.project.editor_options.get('background_mappings', 'shared') == 'shared':
+                    blocks_foreground = level['blocks']
+                else:
+                    blocks_foreground = level['blocks_foreground']
+                blocks_entropy = map(image_entropy, blocks_foreground)
+                thumbnails.append(blocks_entropy.index(max(blocks_entropy)))
+            cache['thumbnails'] = thumbnails
 
         levels = self.project.levels
         self.loaded.emit(levels, thumbnails, self.project)
@@ -523,20 +528,22 @@ class Editor(QtGui.QWidget):
             super(Editor, self).keyPressEvent(event)
 
     def load_rom(self, project_class, filename):
-        self.filename = filename
         self.drop_project()
-        self.project_loader = ProjectLoader(project_class(filename))
-        self.project_loader.started.connect(self.started)
-        self.project_loader.progress.connect(self.progress)
-        self.project_loader.loaded.connect(self.loaded)
-        self.project_loader.start(QtCore.QThread.IdlePriority)
+        self.filename = filename
+        self.start_loading(project_class(filename))
 
     def load_project(self, filename):
         import imp, os.path
         import loaders
+        self.drop_project()
         loaders.current_path = os.path.dirname(filename)
         project_module = imp.load_source('project_module', filename)
-        self.project_loader = ProjectLoader(project_module.project())
+        self.filename = filename
+        self.start_loading(project_module.project())
+
+    def start_loading(self, project):
+        cache.load(self.filename)
+        self.project_loader = ProjectLoader(project)
         self.project_loader.started.connect(self.started)
         self.project_loader.progress.connect(self.progress)
         self.project_loader.loaded.connect(self.loaded)
@@ -583,10 +590,13 @@ class Editor(QtGui.QWidget):
         self.thumbnails = thumbnails
         self.options = project.editor_options
 
+        cache.save()
+
         try:
             level_names = project.level_names
         except AttributeError:
             level_names = map(lambda x: x['name'], levels)
+
         self.level_selector = LevelSelector(level_names, editor=self)
         self.level_selector.selected.connect(self.set_level)
         self.foreground_selector = BlockSelector({})

@@ -14,6 +14,23 @@ class Loader(object):
     def __add__(self, other):
         return LoaderList([self, other])
 
+    def save_args(self, *args):
+        self.args = args
+
+    @property
+    def signature(self):
+        signature = self.__class__.__name__
+        try:
+            args = ', '.join(map(repr, self.args))
+        except AttributeError:
+            args = ''
+        try:
+            sub_signature = self.subloader.signature
+            args = ', '+args if args else ''
+            return '{sig}({sub_sig}{args})'.format(sig=signature, sub_sig=sub_signature, args=args)
+        except AttributeError:
+            return '{sig}({args})'.format(sig=signature, args=args)
+
 
 class LoaderList(Loader):
     def __init__(self, loader_list):
@@ -42,6 +59,10 @@ class LoaderList(Loader):
     def data(self):
         import operator
         return reduce(operator.add, map(lambda x: x.data, self.loader_list))
+
+    @property
+    def signature(self):
+        return ' + '.join(map(lambda x: x.signature, self.loader_list))
 
 
 class StaticData(Loader):
@@ -179,6 +200,7 @@ class DataArray(Loader):
         self.alignment = alignment
         self.shift = 0
         self.end = None if length is None else self.address+length
+        self.save_args(base_address, index, length, alignment)
 
     def load(self):
         self.data = self.rom['data'][self.address:self.end].get(self.alignment, 0)
@@ -202,6 +224,7 @@ class RelativePointerArray(Loader):
         self.alignment = alignment
         self.shift = 0
         self.end = None if length is None else self.address+length
+        self.save_args(base_address, index, length, alignment, shift)
 
     def load(self):
         self.data = self.rom['data'][self.address:self.end]
@@ -225,6 +248,7 @@ class PointerArray(Loader):
         self.length = length
         self.alignment = alignment
         self.end = None if length is None else self.address+length
+        self.save_args(base_address, index, length, alignment)
 
     def load(self):
         self.data = self.rom['data'][self.address:self.end]
@@ -244,6 +268,7 @@ class DataSlice(Loader):
         self.rom = rom
         self.address = address
         self.length = length
+        self.save_args(address, length)
 
     def load(self):
         self.data = self.rom['data'][self.address:self.address+self.length]
@@ -259,6 +284,7 @@ class ShiftedBy(Loader):
         self.subloader = subloader
         self.shift = shift
         self.typecode = {1: 'B', 2: 'H', 4: 'I'}[alignment]
+        self.save_args(shift, alignment)
 
     def load(self):
         input_data = self.subloader.load()
@@ -281,6 +307,7 @@ class File(Loader):
     def __init__(self, filename):
         import os.path
         self.filename = os.path.join(current_path, filename)
+        self.save_args(self.filename)
 
     def load(self):
         f = open(self.filename, "rb")
@@ -301,12 +328,13 @@ class Project(object):
     def save(self):
         pass
 
-    def __init__(self):
+    @property
+    def levels(self):
         try:
-            self.levels
+            return self._levels
         except AttributeError:
-            self.level = self.get_levels()
-
+            self._levels = self.get_levels()
+            return self._levels
 
 class ROM(Project):
     def __init__(self, filename):
@@ -390,52 +418,67 @@ class BuildSmallBlocks(LevelProcessor):
         self.block_size = block_size
         self.background = background
         if background == 'shared':
-            self.planes = ({'mappings_small': 'mappings_small', 'blocks_small': 'blocks_small'},)
+            self.planes = ({'mappings_small': 'mappings_small', 'blocks_small': 'blocks_small', 'blocks_small_data': 'blocks_small_data'},)
         else:
             self.planes = (
-                {'mappings_small': 'mappings_small_foreground', 'blocks_small': 'blocks_small_foreground'},
-                {'mappings_small': 'mappings_small_background', 'blocks_small': 'blocks_small_background'},
+                {'mappings_small': 'mappings_small_foreground', 'blocks_small': 'blocks_small_foreground', 'blocks_small_data': 'blocks_small_data_foreground'},
+                {'mappings_small': 'mappings_small_background', 'blocks_small': 'blocks_small_background', 'blocks_small_data': 'blocks_small_data_background'},
                 )
 
     def process(self, level):
         '''Build 16x16 blocks'''
+           
         for plane in self.planes:
+            # Building 16x16 blocks is very expensive. 
+            # See if they're in the cache.
+            from cache import cache
+            dependencies = (plane['mappings_small'], 'tiles', 'palette')
+            dependencies = tuple(map(lambda x: level[x].signature, dependencies))
+            if (plane['blocks_small_data'], dependencies) in cache:
+                blocks_small_data = cache[(plane['blocks_small_data'], dependencies)]
+
+            else:
+                blocks_small_data = []
+                for i in xrange(len(level[plane['mappings_small']].data)/8):
+                    block = QtGui.QImage(self.block_size, self.block_size, QtGui.QImage.Format_ARGB32)
+                    block.fill(0xff000000)
+                    block_bits = array('B', '\0'*block.numBytes())
+                    block_bytes_per_line = block.bytesPerLine()
+                    for x in xrange(2):
+                        for y in xrange(2):
+                            flags, tile_id = divmod(level[plane['mappings_small']].data.word(i*8+y*4+x*2), 0x800)
+                            flip_x, flip_y = flags & 0x1, flags & 0x2
+                            palette_line = (flags & 0xc) >> 2
+
+                            tile_data = level['tiles'].data[tile_id*0x20:(tile_id+1)*0x20]
+                            tile_i = 0
+                            for tile_byte in tile_data:
+                                if isinstance(tile_byte, str):
+                                    tile_byte = ord(tile_byte)
+                                tile_y, tile_x = divmod(tile_i, 8)
+                                for k in xrange(2):
+                                    tyle_byte, palette_cell = divmod(tile_byte, 0x10)
+                                    color = level['palette'].data[palette_line*0x10+palette_cell]
+                                    set_x, set_y = tile_x+k, tile_y
+                                    if flip_x:
+                                        set_x = 7-set_x
+                                    if flip_y:
+                                        set_y = 7-set_y
+                                    pixel_addr = (y*8+set_y)*block_bytes_per_line+(x*8+set_x)*4
+                                    block_bits[pixel_addr+3] = (color >> 24) & 0xff
+                                    block_bits[pixel_addr+2] = (color >> 16) & 0xff
+                                    block_bits[pixel_addr+1] = (color >> 8) & 0xff
+                                    block_bits[pixel_addr] = color & 0xff
+                                tile_i += 2
+
+                    blocks_small_data.append(block_bits.tostring())
+
+                cache[(plane['blocks_small_data'], dependencies)] = blocks_small_data
+
             blocks_small = []
-            for i in xrange(len(level[plane['mappings_small']].data)/8):
-                block = QtGui.QImage(self.block_size, self.block_size, QtGui.QImage.Format_ARGB32)
-                block.fill(0xff000000)
-                block_bits = array('B', '\0'*block.numBytes())
-                block_bytes_per_line = block.bytesPerLine()
-                for x in xrange(2):
-                    for y in xrange(2):
-                        flags, tile_id = divmod(level[plane['mappings_small']].data.word(i*8+y*4+x*2), 0x800)
-                        flip_x, flip_y = flags & 0x1, flags & 0x2
-                        palette_line = (flags & 0xc) >> 2
-
-                        tile_data = level['tiles'].data[tile_id*0x20:(tile_id+1)*0x20]
-                        tile_i = 0
-                        for tile_byte in tile_data:
-                            if isinstance(tile_byte, str):
-                                tile_byte = ord(tile_byte)
-                            tile_y, tile_x = divmod(tile_i, 8)
-                            for k in xrange(2):
-                                tyle_byte, palette_cell = divmod(tile_byte, 0x10)
-                                color = level['palette'].data[palette_line*0x10+palette_cell]
-                                set_x, set_y = tile_x+k, tile_y
-                                if flip_x:
-                                    set_x = 7-set_x
-                                if flip_y:
-                                    set_y = 7-set_y
-                                pixel_addr = (y*8+set_y)*block_bytes_per_line+(x*8+set_x)*4
-                                block_bits[pixel_addr+3] = (color >> 24) & 0xff
-                                block_bits[pixel_addr+2] = (color >> 16) & 0xff
-                                block_bits[pixel_addr+1] = (color >> 8) & 0xff
-                                block_bits[pixel_addr] = color & 0xff
-                            tile_i += 2
-
-                block_small = {'data': block_bits.tostring(), 'pickle_data': True}
-                block_small['block'] = QtGui.QImage(block_small['data'], self.block_size, self.block_size, QtGui.QImage.Format_ARGB32)
-                blocks_small.append(block_small)
+            for block in blocks_small_data:
+                blocks_small.append(QtGui.QImage(block, self.block_size, self.block_size, QtGui.QImage.Format_ARGB32))
+            level[plane['blocks_small_data']] = blocks_small_data
             level[plane['blocks_small']] = blocks_small
         return level
 
@@ -460,124 +503,35 @@ class BuildBigBlocks(LevelProcessor):
     def process(self, level):
         '''Build 256x256 blocks'''
         for plane in self.planes:
+            from cache import cache
+            dependencies = (plane['mappings_big'],)
+            dependencies = tuple(map(lambda x: level[x].signature, dependencies))
             blocks_big = []
             block = QtGui.QImage(self.block_size, self.block_size, QtGui.QImage.Format_ARGB32)
             block.fill(0xff000000)
             blocks_big.append(block)  # empty block
-            for i in xrange(len(level[plane['mappings_big']].data)/(self.block_size*2)):
-                block = QtGui.QImage(self.block_size, self.block_size, QtGui.QImage.Format_ARGB32)
-                block.fill(0x00000000)
-                painter = QtGui.QPainter(block)
-                for x in range(self.block_size/16):
-                    for y in range(self.block_size/16):
-                        flags, block_small_id = divmod(level[plane['mappings_big']].data.word(i*self.block_size*2+y*0x20+x*2), self.block_size*2)
-                        flip_x, flip_y = self.get_flip(flags)
-                        try:
-                            painter.drawImage(x*16, y*16, level[plane['blocks_small']][block_small_id]['block'].mirrored(horizontal = flip_x, vertical = flip_y))
-                        except IndexError:
-                            pass
+            if (plane['blocks'], dependencies) in cache:
+                blocks_data = cache[(plane['blocks'], dependencies)]
+                for block in blocks_data:
+                    blocks_big.append(QtGui.QImage(block, self.block_size, self.block_size, QtGui.QImage.Format_ARGB32))
+            else:
+                blocks_big_data = []
+                for i in xrange(len(level[plane['mappings_big']].data)/(self.block_size*2)):
+                    block = QtGui.QImage(self.block_size, self.block_size, QtGui.QImage.Format_ARGB32)
+                    block.fill(0x00000000)
+                    painter = QtGui.QPainter(block)
+                    for x in range(self.block_size/16):
+                        for y in range(self.block_size/16):
+                            flags, block_small_id = divmod(level[plane['mappings_big']].data.word(i*self.block_size*2+y*0x20+x*2), self.block_size*2)
+                            flip_x, flip_y = self.get_flip(flags)
+                            try:
+                                painter.drawImage(x*16, y*16, level[plane['blocks_small']][block_small_id].mirrored(horizontal = flip_x, vertical = flip_y))
+                            except IndexError:
+                                pass
 
-                blocks_big.append(block)
+                    blocks_big.append(block)
+                    blocks_big_data.append(block.bits().asstring(block.numBytes()))
+
+                cache[(plane['blocks'], dependencies)] = blocks_big_data
             level[plane['blocks']] = blocks_big
         return level
-
-
-from UserDict import DictMixin
-
-class OrderedDict(dict, DictMixin):
-    def __init__(self, *args, **kwds):
-        if len(args) > 1:
-            raise TypeError('expected at most 1 arguments, got %d' % len(args))
-        try:
-            self.__end
-        except AttributeError:
-            self.clear()
-        self.update(*args, **kwds)
-
-    def clear(self):
-        self.__end = end = []
-        end += [None, end, end]         # sentinel node for doubly linked list
-        self.__map = {}                 # key --> [key, prev, next]
-        dict.clear(self)
-
-    def __setitem__(self, key, value):
-        if key not in self:
-            end = self.__end
-            curr = end[1]
-            curr[2] = end[1] = self.__map[key] = [key, curr, end]
-        dict.__setitem__(self, key, value)
-
-    def __delitem__(self, key):
-        dict.__delitem__(self, key)
-        key, prev, next = self.__map.pop(key)
-        prev[2] = next
-        next[1] = prev
-
-    def __iter__(self):
-        end = self.__end
-        curr = end[2]
-        while curr is not end:
-            yield curr[0]
-            curr = curr[2]
-
-    def __reversed__(self):
-        end = self.__end
-        curr = end[1]
-        while curr is not end:
-            yield curr[0]
-            curr = curr[1]
-
-    def popitem(self, last=True):
-        if not self:
-            raise KeyError('dictionary is empty')
-        if last:
-            key = reversed(self).next()
-        else:
-            key = iter(self).next()
-        value = self.pop(key)
-        return key, value
-
-    def __reduce__(self):
-        items = [[k, self[k]] for k in self]
-        tmp = self.__map, self.__end
-        del self.__map, self.__end
-        inst_dict = vars(self).copy()
-        self.__map, self.__end = tmp
-        if inst_dict:
-            return (self.__class__, (items,), inst_dict)
-        return self.__class__, (items,)
-
-    def keys(self):
-        return list(self)
-
-    setdefault = DictMixin.setdefault
-    update = DictMixin.update
-    pop = DictMixin.pop
-    values = DictMixin.values
-    items = DictMixin.items
-    iterkeys = DictMixin.iterkeys
-    itervalues = DictMixin.itervalues
-    iteritems = DictMixin.iteritems
-
-    def __repr__(self):
-        if not self:
-            return '%s()' % (self.__class__.__name__,)
-        return '%s(%r)' % (self.__class__.__name__, self.items())
-
-    def copy(self):
-        return self.__class__(self)
-
-    @classmethod
-    def fromkeys(cls, iterable, value=None):
-        d = cls()
-        for key in iterable:
-            d[key] = value
-        return d
-
-    def __eq__(self, other):
-        if isinstance(other, OrderedDict):
-            return len(self)==len(other) and self.items() == other.items()
-        return dict.__eq__(self, other)
-
-    def __ne__(self, other):
-        return not self == other

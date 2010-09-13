@@ -272,7 +272,7 @@ class Sonic1(Project):
             'rotated_collision_array': File('collide/Collision Array (Rotated).bin'),
             'collision_index': File('collide/GHZ.bin'),
         },
-    ][:1]
+    ]
         
 
 project = Sonic1
