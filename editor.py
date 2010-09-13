@@ -359,7 +359,7 @@ class BlockSelector(QtGui.QWidget):
             x += thumb_size
             i += 1
 
-        if self.current_block is not None and self.block_names is not None:
+        if self.current_block is not None and self.block_names is not None and self.current_block < len(self.block_names):
             painter.setPen(QtCore.Qt.NoPen)
             painter.setBrush(QtGui.QColor(0, 0, 0, 128))
             rect = QtCore.QRect(0, self.height()-40, self.width(), 40)
@@ -372,6 +372,8 @@ class BlockSelector(QtGui.QWidget):
         try:
             if self.pos+event.x() >= 10:
                 self.current_block = (self.pos+event.x()-10)/(self.height()-20)
+                if self.current_block >= len(self.blocks):
+                    self.current_block = None
             else:
                 self.current_block = None
         except IndexError:

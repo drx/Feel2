@@ -301,17 +301,16 @@ class Project(object):
     def save(self):
         pass
 
-    @property
-    def levels(self):
+    def __init__(self):
         try:
-            return self._levels
+            self.levels
         except AttributeError:
-            self._levels = self.get_levels()
-            return self._levels
+            self.level = self.get_levels()
 
 
 class ROM(Project):
     def __init__(self, filename):
+        super(ROM, self).__init__()
         self.filename = filename
 
     def load(self):
