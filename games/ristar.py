@@ -96,7 +96,8 @@ class RistarROM(ROM):
                 'collision_array': DataSlice(data, pointers['collision_array'], 0x3c0),
                 'foreground': LevelLayout(PointerArray(data, pointers['layout_foreground'], level_id)),
                 'background': LevelLayout(PointerArray(data, pointers['layout_background'], tileset_id)),
-                'level_id': level_id
+                'level_id': level_id,
+                'name': self.level_names[level_id],
             }
 
             if level_id < 0x15:

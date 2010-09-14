@@ -264,7 +264,7 @@ class PointerArray(Loader):
         return self.data
 
     def save(self):
-        self.rom['data'] = self.rom['data'].splice(self.address, self.end, self.data)
+        self.rom['data'] = Data(self.rom['data']).splice(self.address, self.end, self.data)
 
     @property
     def address(self):
@@ -383,7 +383,7 @@ class Data(str):
 
     def splice(self, i, j, data):
         '''self[i:j] = data, except immutable'''
-        new_data = self[:i] + data + self[i+len(data):]
+        new_data = Data(self[:i] + data + self[i+len(data):])
         return new_data
 
     @staticmethod

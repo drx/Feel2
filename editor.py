@@ -590,10 +590,7 @@ class Editor(QtGui.QWidget):
 
         cache.save()
 
-        try:
-            level_names = project.level_names
-        except AttributeError:
-            level_names = map(lambda x: x['name'], levels)
+        level_names = map(lambda x: x['name'], levels)
 
         self.level_selector = LevelSelector(level_names, editor=self)
         self.level_selector.selected.connect(self.set_level)
