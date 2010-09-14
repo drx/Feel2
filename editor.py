@@ -72,19 +72,47 @@ class Canvas(QtGui.QWidget):
 
 
     def paintEvent(self, event):
-        self.updateImage()
+        try:
+            mode = self.editor.modes[self.editor.mode_id]
+        except AttributeError:
+            self.paint_intro()
+            return
+        
+        if mode in ('levels', 'foreground', 'background'):
+            self.paint_level()
+        elif mode == 'blocks_big':
+            self.paint_blocks_big()
+
+    def paint_intro(self):
+        painter = QtGui.QPainter(self)
+        painter.fillRect(self.rect(), QtCore.Qt.black)
+
+        painter.setPen(QtCore.Qt.white)
+        text = "Welcome to Feel2"
+        painter.setFont(QtGui.QFont("Futura", 24))
+        text_rect = painter.boundingRect(self.rect(), QtCore.Qt.AlignCenter, text)
+        current_image = self.ristar_movie.currentImage()
+        movie_rect = current_image.rect().adjusted(self.width()/2-current_image.width()/2+10, self.height()/2-current_image.height()/2, 0, 0)
+        painter.drawText(QtCore.QPoint(text_rect.left(),self.height()/2+current_image.height()-71), text)
+        painter.drawImage(movie_rect, image_color_to_transparent(current_image, 0x000000, 40))
+
+    def paint_blocks_big(self):
+        painter = QtGui.QPainter(self)
+        painter.fillRect(self.rect(), QtCore.Qt.black)
+
+        if self.editor.pane_tab.selected_block is None:
+            return
+        blocks_foreground = self.parent().get_blocks(self.parent().current_level_id, 'foreground')
+        edited_block = QtGui.QImage(blocks_foreground[self.editor.pane_tab.selected_block])
+        #image_set_alpha(hover_block, 0xe0)
+        painter.drawImage(QtCore.QRect(25, 25, self.height()-25, self.height()-25), edited_block)
+
+    def paint_level(self):
+        self.update_level_image()
         painter = QtGui.QPainter(self)
         painter.fillRect(self.rect(), QtCore.Qt.black)
 
         if self.image.isNull():
-            painter.setPen(QtCore.Qt.white)
-            text = "Welcome to Feel2"
-            painter.setFont(QtGui.QFont("Futura", 24))
-            text_rect = painter.boundingRect(self.rect(), QtCore.Qt.AlignCenter, text)
-            current_image = self.ristar_movie.currentImage()
-            movie_rect = current_image.rect().adjusted(self.width()/2-current_image.width()/2+10, self.height()/2-current_image.height()/2, 0, 0)
-            painter.drawText(QtCore.QPoint(text_rect.left(),self.height()/2+current_image.height()-71), text)
-            painter.drawImage(movie_rect, image_color_to_transparent(current_image, 0x000000, 40))
             return
 
         painter.drawImage(self.rect(), self.image)
@@ -124,7 +152,7 @@ class Canvas(QtGui.QWidget):
             painter.setBrush(QtGui.QBrush(gradient))
             painter.drawRect(rect)
 
-    def updateImage(self):
+    def update_level_image(self):
         if not self.parent().level_loaded:
             return
 
@@ -137,7 +165,7 @@ class Canvas(QtGui.QWidget):
         blocks_background = self.parent().get_blocks(self.parent().current_level_id, 'background')
 
         self.wrap_background = True
-        self.block_size = 256
+        self.block_size = self.editor.options['block_size']
 
         self.max_camera = QtCore.QPoint(self.block_size*foreground['x'], self.block_size*foreground['y'])
         self.old_camera = QtCore.QPoint(self.camera)
@@ -596,7 +624,7 @@ class Editor(QtGui.QWidget):
         self.level_selector.selected.connect(self.set_level)
         self.foreground_selector = BlockSelector({})
         self.background_selector = BlockSelector({})
-        self.blocks_big_selector = BlockSelector({})
+        self.big_block_selector = BlockSelector({})
 
         self.modes = {
             0: 'levels',
@@ -608,7 +636,7 @@ class Editor(QtGui.QWidget):
         self.pane.addTab(self.level_selector, 'Levels')
         self.pane.addTab(self.foreground_selector, 'Foreground')
         self.pane.addTab(self.background_selector, 'Background')
-        self.pane.addTab(self.blocks_big_selector, 'Blocks')
+        self.pane.addTab(self.big_block_selector, 'Blocks')
 
         self.set_level(0)
 
@@ -623,6 +651,12 @@ class Editor(QtGui.QWidget):
         self.foreground_selector.reset()
         self.background_selector.blocks = self.get_blocks(level_id, 'background')
         self.background_selector.reset()
+        if self.get_blocks(level_id, 'foreground') is self.get_blocks(level_id, 'background'):
+            blocks = self.get_blocks(level_id, 'foreground')
+        else:
+            blocks = self.get_blocks(level_id, 'foreground') + self.get_blocks(level_id, 'background')
+        self.big_block_selector.blocks = blocks
+        
         self.level_loaded = True
         self.canvas.reload = True
 

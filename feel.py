@@ -15,7 +15,23 @@ class Window(QtGui.QMainWindow):
         self.max_recent_projects = 10
 
         self.create_menus()
+        self.create_shortcuts()
         self.read_settings()
+
+    def create_shortcuts(self):
+        self.shortcuts = []
+
+        shortcut = QtGui.QShortcut(QtCore.Qt.CTRL + QtCore.Qt.SHIFT + QtCore.Qt.Key_M, self)
+        shortcut.activated.connect(self.toggle_menu)
+        self.shortcuts.append(shortcut)
+
+        shortcut = QtGui.QShortcut(QtCore.Qt.CTRL + QtCore.Qt.SHIFT + QtCore.Qt.Key_F, self)
+        shortcut.activated.connect(self.toggle_full_screen)
+        self.shortcuts.append(shortcut)
+
+        shortcut = QtGui.QShortcut(QtCore.Qt.Key_F11, self)
+        shortcut.activated.connect(self.toggle_full_screen)
+        self.shortcuts.append(shortcut)
 
     def create_menus(self):
         self.menus = {}
@@ -54,6 +70,15 @@ class Window(QtGui.QMainWindow):
 
         self.menus['help'] = self.menuBar().addMenu('&Help')
         self.menus['help'].addAction(QtGui.QAction("&About Feel2", self, triggered=self.about))
+
+    def toggle_menu(self):
+        self.menuBar().setVisible(not self.menuBar().isVisible())
+
+    def toggle_full_screen(self):
+        if self.isFullScreen():
+            self.showNormal()
+        else:
+            self.showFullScreen()
 
     def load_recent_project(self):
         action = self.sender()
