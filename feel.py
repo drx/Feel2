@@ -21,14 +21,6 @@ class Window(QtGui.QMainWindow):
     def create_shortcuts(self):
         self.shortcuts = []
 
-        shortcut = QtGui.QShortcut(QtCore.Qt.CTRL + QtCore.Qt.SHIFT + QtCore.Qt.Key_M, self)
-        shortcut.activated.connect(self.toggle_menu)
-        self.shortcuts.append(shortcut)
-
-        shortcut = QtGui.QShortcut(QtCore.Qt.CTRL + QtCore.Qt.SHIFT + QtCore.Qt.Key_F, self)
-        shortcut.activated.connect(self.toggle_full_screen)
-        self.shortcuts.append(shortcut)
-
         shortcut = QtGui.QShortcut(QtCore.Qt.Key_F11, self)
         shortcut.activated.connect(self.toggle_full_screen)
         self.shortcuts.append(shortcut)
@@ -40,15 +32,19 @@ class Window(QtGui.QMainWindow):
         action = QtGui.QAction("&Load project", self, triggered=self.load_project)
         action.setShortcut(QtCore.Qt.CTRL + QtCore.Qt.Key_L)
         self.menus['project'].addAction(action)
+        self.addAction(action)
 
         self.menus['load_rom'] = self.menus['project'].addMenu('Load &ROM')
         for rom in ROMs:
-            self.menus['load_rom'].addAction(QtGui.QAction(rom['name'], self, triggered=self.load_rom(rom['class'])))
+            action = QtGui.QAction(rom['name'], self, triggered=self.load_rom(rom['class']))
+            self.menus['load_rom'].addAction(action)
+            self.addAction(action)
 
         self.menus['project'].addSeparator()
         action = QtGui.QAction("&Save project", self, triggered=self.editor.save_project)
         action.setShortcut(QtCore.Qt.CTRL + QtCore.Qt.Key_S)
         self.menus['project'].addAction(action)
+        self.addAction(action)
 
         self.menus['project'].addSeparator()
         self.menus['recent_projects'] = self.menus['project'].addMenu('Recent projects')
@@ -65,13 +61,28 @@ class Window(QtGui.QMainWindow):
             if key is not None:
                 self.recent_project_actions[i].setShortcut(key)
             self.menus['recent_projects'].addAction(self.recent_project_actions[i])
+            self.addAction(self.recent_project_actions[i])
 
         self.update_recent_projects()
+
+        self.menus['view'] = self.menuBar().addMenu('&View')
+
+        action = QtGui.QAction("&Toggle full screen", self, triggered=self.toggle_full_screen)
+        action.setShortcut(QtCore.Qt.CTRL + QtCore.Qt.SHIFT + QtCore.Qt.Key_F)
+        self.menus['view'].addAction(action)
+        self.addAction(action)
+
+        self.menus['view'].addSeparator()
+
+        action = QtGui.QAction("&Toggle menu bar", self, triggered=self.toggle_menu_bar)
+        action.setShortcut(QtCore.Qt.CTRL + QtCore.Qt.SHIFT + QtCore.Qt.Key_M)
+        self.menus['view'].addAction(action)
+        self.addAction(action)
 
         self.menus['help'] = self.menuBar().addMenu('&Help')
         self.menus['help'].addAction(QtGui.QAction("&About Feel2", self, triggered=self.about))
 
-    def toggle_menu(self):
+    def toggle_menu_bar(self):
         self.menuBar().setVisible(not self.menuBar().isVisible())
 
     def toggle_full_screen(self):
