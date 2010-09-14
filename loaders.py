@@ -426,11 +426,11 @@ class BuildSmallBlocks(LevelProcessor):
         self.block_size = block_size
         self.background = background
         if background == 'shared':
-            self.planes = ({'mappings_small': 'mappings_small', 'blocks_small': 'blocks_small', 'blocks_small_data': 'blocks_small_data'},)
+            self.planes = ({'mappings_small': 'mappings_small', 'blocks_small': 'blocks_small', 'blocks_small_data': 'blocks_small_data', 'dependencies': 'dependencies_small'},)
         else:
             self.planes = (
-                {'mappings_small': 'mappings_small_foreground', 'blocks_small': 'blocks_small_foreground', 'blocks_small_data': 'blocks_small_data_foreground'},
-                {'mappings_small': 'mappings_small_background', 'blocks_small': 'blocks_small_background', 'blocks_small_data': 'blocks_small_data_background'},
+                {'mappings_small': 'mappings_small_foreground', 'blocks_small': 'blocks_small_foreground', 'blocks_small_data': 'blocks_small_data_foreground', 'dependencies': 'dependencies_small_foreground'},
+                {'mappings_small': 'mappings_small_background', 'blocks_small': 'blocks_small_background', 'blocks_small_data': 'blocks_small_data_background', 'dependencies': 'dependencies_small_background'},
                 )
 
     def process(self, level):
@@ -442,6 +442,7 @@ class BuildSmallBlocks(LevelProcessor):
             from cache import cache
             dependencies = (plane['mappings_small'], 'tiles', 'palette')
             dependencies = tuple(map(lambda x: level[x].signature, dependencies))
+            level[plane['dependencies']] = dependencies
             if (plane['blocks_small_data'], dependencies) in cache:
                 blocks_small_data = cache[(plane['blocks_small_data'], dependencies)]
 
@@ -501,11 +502,11 @@ class BuildBigBlocks(LevelProcessor):
             self.get_flip = get_flip
 
         if background == 'shared':
-            self.planes = ({'blocks_small': 'blocks_small', 'mappings_big': 'mappings_big', 'blocks': 'blocks'},)
+            self.planes = ({'blocks_small': 'blocks_small', 'mappings_big': 'mappings_big', 'blocks': 'blocks', 'dependencies_small': 'dependencies_small'},)
         else:
             self.planes = (
-                {'blocks_small': 'blocks_small_foreground', 'mappings_big': 'mappings_big_foreground', 'blocks': 'blocks_foreground'},
-                {'blocks_small': 'blocks_small_background', 'mappings_big': 'mappings_big_background', 'blocks': 'blocks_background'},
+                {'blocks_small': 'blocks_small_foreground', 'mappings_big': 'mappings_big_foreground', 'blocks': 'blocks_foreground', 'dependencies_small': 'dependencies_small_foreground'},
+                {'blocks_small': 'blocks_small_background', 'mappings_big': 'mappings_big_background', 'blocks': 'blocks_background', 'dependencies_small': 'dependencies_small_background'},
                 )
 
     def process(self, level):
@@ -514,6 +515,7 @@ class BuildBigBlocks(LevelProcessor):
             from cache import cache
             dependencies = (plane['mappings_big'],)
             dependencies = tuple(map(lambda x: level[x].signature, dependencies))
+            dependencies += level[plane['dependencies_small']]
             blocks_big = []
             block = QtGui.QImage(self.block_size, self.block_size, QtGui.QImage.Format_ARGB32)
             block.fill(0xff000000)
