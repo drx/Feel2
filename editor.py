@@ -599,16 +599,19 @@ class Editor(QtGui.QWidget):
         self.level_selector.selected.connect(self.set_level)
         self.foreground_selector = BlockSelector({})
         self.background_selector = BlockSelector({})
+        self.blocks_big_selector = BlockSelector({})
 
         self.modes = {
             0: 'levels',
             1: 'foreground',
             2: 'background',
+            3: 'blocks_big',
         }
         self.mode_id = 0
         self.pane.addTab(self.level_selector, 'Levels')
         self.pane.addTab(self.foreground_selector, 'Foreground')
         self.pane.addTab(self.background_selector, 'Background')
+        self.pane.addTab(self.blocks_big_selector, 'Blocks')
 
         self.set_level(0)
 

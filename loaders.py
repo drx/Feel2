@@ -2,6 +2,7 @@ from PyQt4 import QtGui, QtCore
 import struct
 from array import array
 from compression import nemesis, star, enigma, kosinski
+from cache import cache
 
 
 class Loader(object):
@@ -81,10 +82,17 @@ class Compressed(Loader):
         self.subloader = subloader
 
     def load(self):
-        compressed = self.subloader.load()
-        decompressed = self.decompress(compressed)
-        self.data = Data(decompressed)
+        cache_key = ('compressed', self.signature)
+        if cache_key in cache:
+            self.data = cache[cache_key]
+        else:    
+            compressed = self.subloader.load()
+            decompressed = self.decompress(compressed)
+            self.data = Data(decompressed)
+            cache[cache_key] = self.data
+    
         self.changed = False
+
         return self.data
 
     def save(self):
